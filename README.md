@@ -8,7 +8,7 @@ A Rust CLI tool that creates isolated Ubuntu Docker containers with a developmen
 -   Mounts current directory to `/workspace` in the container
 -   Automatically copies your `.claude` configuration
 -   Starts the selected agent in the container
--   Generates contextual container names to avoid conflicts (`csb-{dir}-{branch}-{yymmddhhmm}`)
+-   Generates contextual container names to avoid conflicts (`csb-{agent}-{dir}-{branch}-{yymmddhhmm}`)
 -   Cleans up all containers for a directory with `codesandbox --cleanup`
 
 ## Prerequisites
@@ -43,7 +43,7 @@ codesandbox
 
 This will:
 
-1. Create a new Ubuntu container with a unique name (e.g., `csb-project-main-2401011230`)
+1. Create a new Ubuntu container with a unique name (e.g., `csb-claude-project-main-2401011230`)
 2. Mount the current directory to `/workspace` in the container
 3. Copy your `.claude` config from `~/.claude` (if it exists)
 4. Install and start the selected agent in the container

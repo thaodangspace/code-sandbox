@@ -1,0 +1,14 @@
+use super::container;
+use std::fs;
+use tempfile::tempdir;
+
+#[test]
+fn test_generate_container_name_sanitizes_directory() {
+    let tmp_dir = tempdir().expect("create temp dir");
+    let project_dir = tmp_dir.path().join("My Project");
+    fs::create_dir(&project_dir).expect("create project dir");
+
+    let name = container::generate_container_name(&project_dir);
+
+    assert!(name.starts_with("csb-my-project-"));
+}

@@ -1,6 +1,19 @@
 # codesandbox (Code Sandbox)
 
 A Rust CLI tool that creates isolated Ubuntu Docker containers with a development agent pre-installed (Claude by default).
+This lets you run AI assistants in a disposable sandbox where their actions are
+confined to the container.
+
+## Why sandbox an AI agent?
+
+Running an agent inside an isolated container provides several benefits:
+
+-   Protects your host machine by keeping the agent's file system changes and
+    processes separate from your environment
+-   Ensures a clean, reproducible workspace with all dependencies installed
+    from scratch
+-   Makes it easy to experiment with untrusted code or dependencies and then
+    discard the container when finished
 
 ## Features
 

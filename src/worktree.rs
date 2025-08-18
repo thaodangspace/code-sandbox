@@ -16,26 +16,28 @@ pub fn create_worktree(base_dir: &Path, branch: &str) -> Result<PathBuf> {
     let worktrees_dir = root.join(".codesandbox-worktrees");
     fs::create_dir_all(&worktrees_dir).context("Failed to create worktrees directory")?;
     let worktree_path = worktrees_dir.join(branch);
-    let branch_exists = Command::new("git")
-        .args(["rev-parse", "--verify", branch])
-        .current_dir(&root)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    let mut cmd = Command::new("git");
-    cmd.args(["worktree", "add", "--force"]);
-    if branch_exists {
-        cmd.arg(worktree_path.to_str().unwrap());
-        cmd.arg(branch);
-    } else {
-        cmd.args(["-b", branch, worktree_path.to_str().unwrap()]);
-    }
-    let status = cmd
-        .current_dir(&root)
-        .status()
-        .context("Failed to add git worktree")?;
-    if !status.success() {
-        anyhow::bail!("git worktree add failed");
+    if !worktree_path.exists() {
+        let branch_exists = Command::new("git")
+            .args(["rev-parse", "--verify", branch])
+            .current_dir(&root)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        let mut cmd = Command::new("git");
+        cmd.args(["worktree", "add", "--force"]);
+        if branch_exists {
+            cmd.arg(worktree_path.to_str().unwrap());
+            cmd.arg(branch);
+        } else {
+            cmd.args(["-b", branch, worktree_path.to_str().unwrap()]);
+        }
+        let status = cmd
+            .current_dir(&root)
+            .status()
+            .context("Failed to add git worktree")?;
+        if !status.success() {
+            anyhow::bail!("git worktree add failed");
+        }
     }
     Ok(worktree_path)
 }

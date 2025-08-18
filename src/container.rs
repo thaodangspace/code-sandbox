@@ -312,7 +312,7 @@ pub async fn create_container(
                 &format!("{}:{}", serena_path.display(), container_serena_path),
             ]);
             println!(
-                "Mounting Serena CMP config from: {} -> {}",
+                "Mounting Serena MCP config from: {} -> {}",
                 serena_path.display(),
                 container_serena_path
             );
@@ -454,6 +454,9 @@ RUN useradd -m -s /bin/bash {user} && \
 USER root
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @google/gemini-cli
+RUN npm install -g @openai/codex 
+RUN npm install -g @qwen-code/qwen-code@latest
 # Switch to user
 USER {user}
 WORKDIR /home/{user}

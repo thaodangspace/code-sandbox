@@ -78,4 +78,4 @@ Containers are created with:
 
 ## Container Management
 
-The tool generates unique container names using UUID prefixes (`codesandbox-{8-char-uuid}`) and tracks the last container for resumption. State is persisted in `~/.config/codesandbox/last_container`.
+The tool generates contextual container names using the format `csb-{dir}-{branch}-{yymmddhhmm}` and tracks the last container for resumption. State is persisted in `~/.config/codesandbox/last_container`.

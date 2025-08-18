@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod container;
+mod settings;
 mod state;
 
 use anyhow::{Context, Result};
@@ -10,17 +11,20 @@ use std::io::{self, Write};
 
 use cli::{Cli, Commands};
 use container::{
-    check_docker_availability, cleanup_containers, create_container, generate_container_name,
-    list_containers, resume_container,
+    auto_remove_old_containers, check_docker_availability, cleanup_containers, create_container,
+    generate_container_name, list_containers, resume_container,
 };
+use settings::load_settings;
 use state::{clear_last_container, load_last_container, save_last_container};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse_args();
     let current_dir = env::current_dir().context("Failed to get current directory")?;
+    let settings = load_settings().unwrap_or_default();
 
     check_docker_availability()?;
+    auto_remove_old_containers(settings.auto_remove_minutes.unwrap_or(60))?;
 
     if cli.cleanup {
         cleanup_containers(&current_dir)?;

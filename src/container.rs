@@ -6,20 +6,20 @@ use std::process::Command;
 
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
 
-pub fn generate_container_name(current_dir: &Path) -> String {
-    fn sanitize(name: &str) -> String {
-        name.to_lowercase()
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect()
-    }
+fn sanitize(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
 
+pub fn generate_container_name(current_dir: &Path) -> String {
     let dir_name = current_dir
         .file_name()
         .and_then(|s| s.to_str())
@@ -38,7 +38,47 @@ pub fn generate_container_name(current_dir: &Path) -> String {
 
     let timestamp = Local::now().format("%y%m%d%H%M").to_string();
 
-    format!("csb-{}-{}-{}", dir_name, branch_name, timestamp)
+    format!("csb-{dir_name}-{branch_name}-{timestamp}")
+}
+
+pub fn cleanup_containers(current_dir: &Path) -> Result<()> {
+    let dir_name = current_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(sanitize)
+        .unwrap_or_else(|| "unknown".to_string());
+    let prefix = format!("csb-{dir_name}-");
+
+    let list_output = Command::new("docker")
+        .args(["ps", "-a", "--format", "{{.Names}}"])
+        .output()
+        .context("Failed to list Docker containers")?;
+
+    if !list_output.status.success() {
+        anyhow::bail!(
+            "Failed to list containers: {}",
+            String::from_utf8_lossy(&list_output.stderr)
+        );
+    }
+
+    let names = String::from_utf8_lossy(&list_output.stdout);
+    for name in names.lines().filter(|n| n.starts_with(&prefix)) {
+        println!("Removing container {name}");
+        let rm_output = Command::new("docker")
+            .args(["rm", "-f", name])
+            .output()
+            .context("Failed to remove container")?;
+
+        if !rm_output.status.success() {
+            anyhow::bail!(
+                "Failed to remove container {}: {}",
+                name,
+                String::from_utf8_lossy(&rm_output.stderr)
+            );
+        }
+    }
+
+    Ok(())
 }
 
 pub fn check_docker_availability() -> Result<()> {

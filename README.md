@@ -48,6 +48,12 @@ This will:
 3. Copy your `.claude` config from `~/.claude` (if it exists)
 4. Install and start Claude Code in the container
 
+To mount an additional directory read-only inside the container, use:
+
+```
+codesandbox --add_dir /path/to/other/repo
+```
+
 ## Connecting to the Container
 
 After the container is created, you can connect to it using:

@@ -40,4 +40,3 @@ pub fn clear_last_container() -> Result<()> {
     }
     Ok(())
 }
-

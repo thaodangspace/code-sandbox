@@ -34,4 +34,3 @@ fn test_clear_last_container() {
     let loaded = load_last_container().expect("load should succeed");
     assert!(loaded.is_none());
 }
-

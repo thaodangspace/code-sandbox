@@ -1,9 +1,7 @@
 use axum::{extract::Path, http::StatusCode, routing::get, Json, Router};
 use serde::Serialize;
-use std::io::Write;
 use std::net::SocketAddr;
 use std::process::Command;
-use tempfile::NamedTempFile;
 
 #[derive(Serialize)]
 struct FileDiff {
@@ -25,119 +23,103 @@ struct ErrorResponse {
 async fn get_changed(
     Path(container): Path<String>,
 ) -> Result<Json<ChangeResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let output = Command::new("docker").args(["diff", &container]).output();
-    match output {
+    // Get git status to find changed files
+    let status_output = Command::new("docker")
+        .args(["exec", &container, "git", "status", "--porcelain"])
+        .output();
+
+    match status_output {
         Ok(out) if out.status.success() => {
-            let diff_output = String::from_utf8_lossy(&out.stdout);
-
-            // Determine base image of the container
-            let image = Command::new("docker")
-                .args(["inspect", "--format", "{{.Image}}", &container])
-                .output()
-                .ok()
-                .and_then(|o| {
-                    if o.status.success() {
-                        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                    } else {
-                        None
-                    }
-                });
-
+            let status_lines = String::from_utf8_lossy(&out.stdout);
             let mut files = Vec::new();
-            for line in diff_output.lines() {
-                if line.len() < 2 {
+
+            for line in status_lines.lines() {
+                if line.len() < 3 {
                     continue;
                 }
-                let status = line.chars().next().unwrap();
-                let path = line[2..].to_string();
 
-                let diff_text = match status {
-                    'A' | 'C' => {
-                        let new_out = Command::new("docker")
+                let status_chars: Vec<char> = line.chars().collect();
+                let index_status = status_chars[0];
+                let worktree_status = status_chars[1];
+                let path = line[3..].to_string();
+
+                // Determine the overall status
+                let status = if index_status != ' ' && index_status != '?' {
+                    index_status.to_string()
+                } else {
+                    worktree_status.to_string()
+                };
+
+                // Get the diff for this file
+                let diff_text = match (index_status, worktree_status) {
+                    ('?', '?') => {
+                        // Untracked file - show entire content as added
+                        let cat_output = Command::new("docker")
                             .args(["exec", &container, "cat", &path])
                             .output();
-                        match new_out {
-                            Ok(no) if no.status.success() => {
-                                let new_bytes = no.stdout;
-                                let mut new_file = NamedTempFile::new().map_err(|e| {
-                                    (
-                                        StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(ErrorResponse {
-                                            error: e.to_string(),
-                                        }),
-                                    )
-                                })?;
-                                new_file.write_all(&new_bytes).map_err(|e| {
-                                    (
-                                        StatusCode::INTERNAL_SERVER_ERROR,
-                                        Json(ErrorResponse {
-                                            error: e.to_string(),
-                                        }),
-                                    )
-                                })?;
-
-                                let base_bytes = image.as_ref().and_then(|img| {
-                                    let base_out = Command::new("docker")
-                                        .args(["run", "--rm", img, "cat", &path])
-                                        .output()
-                                        .ok()?;
-                                    if base_out.status.success() {
-                                        Some(base_out.stdout)
-                                    } else {
-                                        None
-                                    }
-                                });
-
-                                let diff_out = if let Some(base) = base_bytes {
-                                    let mut base_file = NamedTempFile::new().map_err(|e| {
-                                        (
-                                            StatusCode::INTERNAL_SERVER_ERROR,
-                                            Json(ErrorResponse {
-                                                error: e.to_string(),
-                                            }),
-                                        )
-                                    })?;
-                                    base_file.write_all(&base).map_err(|e| {
-                                        (
-                                            StatusCode::INTERNAL_SERVER_ERROR,
-                                            Json(ErrorResponse {
-                                                error: e.to_string(),
-                                            }),
-                                        )
-                                    })?;
-                                    Command::new("diff")
-                                        .args([
-                                            "-u",
-                                            base_file.path().to_str().unwrap(),
-                                            new_file.path().to_str().unwrap(),
-                                        ])
-                                        .output()
-                                        .ok()
-                                } else {
-                                    Command::new("diff")
-                                        .args([
-                                            "-u",
-                                            "/dev/null",
-                                            new_file.path().to_str().unwrap(),
-                                        ])
-                                        .output()
-                                        .ok()
-                                };
-
-                                diff_out.map(|d| String::from_utf8_lossy(&d.stdout).to_string())
+                        match cat_output {
+                            Ok(cat_out) if cat_out.status.success() => {
+                                let content = String::from_utf8_lossy(&cat_out.stdout);
+                                Some(format!(
+                                    "--- /dev/null\n+++ {}\n@@ -0,0 +1,{} @@\n{}",
+                                    path,
+                                    content.lines().count(),
+                                    content
+                                        .lines()
+                                        .map(|l| format!("+{}", l))
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                ))
                             }
                             _ => None,
                         }
                     }
-                    _ => None,
+                    _ => {
+                        // Use git diff for tracked files
+                        let diff_output = Command::new("docker")
+                            .args(["exec", &container, "git", "diff", "HEAD", "--", &path])
+                            .output();
+                        match diff_output {
+                            Ok(diff_out) if diff_out.status.success() => {
+                                let diff_content =
+                                    String::from_utf8_lossy(&diff_out.stdout).to_string();
+                                if diff_content.is_empty() {
+                                    // Try diff against index for staged changes
+                                    let staged_diff = Command::new("docker")
+                                        .args([
+                                            "exec", &container, "git", "diff", "--cached", "--",
+                                            &path,
+                                        ])
+                                        .output();
+                                    match staged_diff {
+                                        Ok(staged_out) if staged_out.status.success() => {
+                                            let staged_content =
+                                                String::from_utf8_lossy(&staged_out.stdout)
+                                                    .to_string();
+                                            if !staged_content.is_empty() {
+                                                Some(staged_content)
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                        _ => None,
+                                    }
+                                } else {
+                                    Some(diff_content)
+                                }
+                            }
+                            _ => None,
+                        }
+                    }
                 };
 
                 files.push(FileDiff {
                     path,
-                    status: status.to_string(),
+                    status,
                     diff: diff_text,
                 });
             }
+
             Ok(Json(ChangeResponse { files }))
         }
         Ok(out) => {
@@ -159,7 +141,7 @@ async fn get_changed(
 #[tokio::main]
 async fn main() {
     let app = Router::new().route("/api/changed/:container", get(get_changed));
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 6789));
     println!("Listening on {addr}");
     axum::Server::bind(&addr)
         .serve(app.into_make_service())

@@ -5,11 +5,12 @@ mod state;
 
 use anyhow::{Context, Result};
 use std::env;
+use std::io::{self, Write};
 
-use cli::Cli;
+use cli::{Cli, Commands};
 use container::{
     check_docker_availability, cleanup_containers, create_container, generate_container_name,
-    resume_container,
+    list_containers, resume_container,
 };
 use state::{clear_last_container, load_last_container, save_last_container};
 
@@ -40,6 +41,39 @@ async fn main() -> Result<()> {
                 anyhow::bail!("No previous container found. Run without --continue to create a new container.");
             }
         }
+    }
+
+    if let Some(Commands::Ls) = cli.command {
+        let containers = list_containers(&current_dir)?;
+        if containers.is_empty() {
+            println!(
+                "No Code Sandbox containers found for directory {}",
+                current_dir.display()
+            );
+            return Ok(());
+        }
+
+        for (i, name) in containers.iter().enumerate() {
+            println!("{}: {}", i + 1, name);
+        }
+
+        print!("Select a container to attach (number, or press Enter to cancel): ");
+        io::stdout().flush().ok();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        match input.parse::<usize>() {
+            Ok(num) if num >= 1 && num <= containers.len() => {
+                let selected = &containers[num - 1];
+                resume_container(selected).await?;
+            }
+            _ => println!("Invalid selection"),
+        }
+        return Ok(());
     }
 
     let container_name = generate_container_name(&current_dir);

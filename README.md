@@ -58,6 +58,16 @@ docker exec -it <container-name> /bin/bash
 
 The container name will be displayed when `codesandbox` runs.
 
+## Listing Existing Containers
+
+List all sandbox containers created from the current directory and optionally attach to one:
+
+```bash
+codesandbox ls
+```
+
+You will be shown a numbered list of containers. Enter a number to attach or press Enter to cancel.
+
 ## Container Contents
 
 -   **Base**: Ubuntu 22.04

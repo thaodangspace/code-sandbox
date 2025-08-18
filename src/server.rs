@@ -1,7 +1,19 @@
-use axum::{extract::Path, http::StatusCode, routing::get, Json, Router};
+use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path,
+    },
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Json, Router,
+};
+use futures::{SinkExt, StreamExt};
 use serde::Serialize;
 use std::net::SocketAddr;
-use std::process::Command;
+use std::process::Stdio;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::Command;
 
 #[derive(Serialize)]
 struct FileDiff {
@@ -26,7 +38,8 @@ async fn get_changed(
     // Get git status to find changed files
     let status_output = Command::new("docker")
         .args(["exec", &container, "git", "status", "--porcelain"])
-        .output();
+        .output()
+        .await;
 
     match status_output {
         Ok(out) if out.status.success() => {
@@ -56,7 +69,8 @@ async fn get_changed(
                         // Untracked file - show entire content as added
                         let cat_output = Command::new("docker")
                             .args(["exec", &container, "cat", &path])
-                            .output();
+                            .output()
+                            .await;
                         match cat_output {
                             Ok(cat_out) if cat_out.status.success() => {
                                 let content = String::from_utf8_lossy(&cat_out.stdout);
@@ -78,7 +92,8 @@ async fn get_changed(
                         // Use git diff for tracked files
                         let diff_output = Command::new("docker")
                             .args(["exec", &container, "git", "diff", "HEAD", "--", &path])
-                            .output();
+                            .output()
+                            .await;
                         match diff_output {
                             Ok(diff_out) if diff_out.status.success() => {
                                 let diff_content =
@@ -90,7 +105,8 @@ async fn get_changed(
                                             "exec", &container, "git", "diff", "--cached", "--",
                                             &path,
                                         ])
-                                        .output();
+                                        .output()
+                                        .await;
                                     match staged_diff {
                                         Ok(staged_out) if staged_out.status.success() => {
                                             let staged_content =
@@ -138,9 +154,82 @@ async fn get_changed(
     }
 }
 
+async fn terminal_ws(ws: WebSocketUpgrade, Path(container): Path<String>) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_terminal(socket, container))
+}
+
+async fn handle_terminal(mut socket: WebSocket, container: String) {
+    let mut child = match Command::new("docker")
+        .args(["exec", "-i", &container, "/bin/bash"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            let _ = socket
+                .send(Message::Text(format!("failed to start shell: {}", e)))
+                .await;
+            return;
+        }
+    };
+
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+
+    let (mut sender, mut receiver) = socket.split();
+
+    // Forward stdout/stderr to websocket
+    let mut out_buf = [0u8; 1024];
+    let mut err_buf = [0u8; 1024];
+
+    let stdout_task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                Ok(n) = stdout.read(&mut out_buf) => {
+                    if n == 0 { break; }
+                    let text = String::from_utf8_lossy(&out_buf[..n]).to_string();
+                    if sender.send(Message::Text(text)).await.is_err() {
+                        break;
+                    }
+                }
+                Ok(n) = stderr.read(&mut err_buf) => {
+                    if n == 0 { continue; }
+                    let text = String::from_utf8_lossy(&err_buf[..n]).to_string();
+                    if sender.send(Message::Text(text)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // Forward websocket messages to stdin
+    while let Some(Ok(msg)) = receiver.next().await {
+        match msg {
+            Message::Text(t) => {
+                let _ = stdin.write_all(t.as_bytes()).await;
+            }
+            Message::Binary(b) => {
+                let _ = stdin.write_all(&b).await;
+            }
+            Message::Close(_) => break,
+            _ => {}
+        }
+    }
+
+    let _ = stdin.shutdown().await;
+    let _ = stdout_task.await;
+    let _ = child.kill();
+}
+
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/api/changed/:container", get(get_changed));
+    let app = Router::new()
+        .route("/api/changed/:container", get(get_changed))
+        .route("/terminal/:container", get(terminal_ws));
     let addr = SocketAddr::from(([0, 0, 0, 0], 6789));
     println!("Listening on {addr}");
     axum::Server::bind(&addr)

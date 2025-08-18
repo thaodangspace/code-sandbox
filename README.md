@@ -22,6 +22,8 @@ Running an agent inside an isolated container provides several benefits:
 -   Automatically copies your `.claude` configuration
 -   Starts the selected agent in the container
 -   Generates contextual container names to avoid conflicts (`csb-{agent}-{dir}-{branch}-{yymmddhhmm}`)
+-   Resumes the last created container with `codesandbox --continue`
+-   Creates and uses a git worktree for a branch with `codesandbox --worktree <branch>`
 -   Cleans up all containers for a directory with `codesandbox --cleanup`
 
 ## Prerequisites
@@ -35,7 +37,7 @@ Running an agent inside an isolated container provides several benefits:
 
 ```bash
 git clone <this-repo>
-cd code-sandbox-script
+cd code-sandbox
 cargo build --release
 sudo cp target/release/codesandbox /usr/local/bin/
 ```
@@ -73,6 +75,18 @@ To mount an additional directory read-only inside the container, use:
 codesandbox --add_dir /path/to/other/repo
 ```
 
+To resume the last container created from this directory:
+
+```
+codesandbox --continue
+```
+
+To create and use a git worktree for a specific branch:
+
+```
+codesandbox --worktree feature-branch
+```
+
 ## Connecting to the Container
 
 After the container is created, you can connect to it using:
@@ -92,6 +106,24 @@ codesandbox ls
 ```
 
 You will be shown a numbered list of containers. Enter a number to attach or press Enter to cancel.
+
+## REST API for Container Changes
+
+This repository includes an optional HTTP server that reports file changes inside a running sandbox container.
+
+Start the server:
+
+```bash
+cargo run --bin api
+```
+
+The server listens on port 6789. Query the changes for a specific container:
+
+```bash
+curl http://localhost:6789/api/changed/<container-name>
+```
+
+The response lists changed files along with their git status and diff contents.
 
 ## Container Contents
 

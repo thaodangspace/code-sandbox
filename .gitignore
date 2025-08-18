@@ -1,0 +1,9 @@
+# Node
+node_modules/
+dist/
+
+# Go
+server/bin/
+
+# Misc
+.env

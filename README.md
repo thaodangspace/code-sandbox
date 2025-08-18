@@ -1,13 +1,13 @@
 # codesandbox (Code Sandbox)
 
-A Rust CLI tool that creates isolated Ubuntu Docker containers with Claude Code pre-installed for development work.
+A Rust CLI tool that creates isolated Ubuntu Docker containers with a development agent pre-installed (Claude by default).
 
 ## Features
 
--   Creates a new Ubuntu Docker container with Claude Code installed
+-   Creates a new Ubuntu Docker container with a chosen agent (Claude, Gemini, Codex, Qwen) installed
 -   Mounts current directory to `/workspace` in the container
 -   Automatically copies your `.claude` configuration
--   Starts Claude Code in the container
+-   Starts the selected agent in the container
 -   Generates contextual container names to avoid conflicts (`csb-{dir}-{branch}-{yymmddhhmm}`)
 -   Cleans up all containers for a directory with `codesandbox --cleanup`
 
@@ -46,7 +46,13 @@ This will:
 1. Create a new Ubuntu container with a unique name (e.g., `csb-project-main-2401011230`)
 2. Mount the current directory to `/workspace` in the container
 3. Copy your `.claude` config from `~/.claude` (if it exists)
-4. Install and start Claude Code in the container
+4. Install and start the selected agent in the container
+
+To use a different agent, specify the `--agent` flag. For example, to start Qwen:
+
+```
+codesandbox --agent qwen
+```
 
 To mount an additional directory read-only inside the container, use:
 
@@ -79,7 +85,7 @@ You will be shown a numbered list of containers. Enter a number to attach or pre
 -   **Base**: Ubuntu 22.04
 -   **Tools**: curl, wget, git, build-essential, python3, nodejs, npm
 -   **User**: `ubuntu` with sudo privileges
--   **Claude Code**: Pre-installed and available in PATH
+-   **Agent**: Claude Code pre-installed (other agents can be started if available)
 -   **Working Directory**: `/workspace` (your mounted folder)
 
 ## Configuration
@@ -107,4 +113,4 @@ docker rmi codesandbox-image
 
 -   **Docker not found**: Ensure Docker is installed and running
 -   **Permission denied**: Make sure your user is in the `docker` group
--   **Claude Code fails to start**: You can manually start it with `docker exec -it <container> claude`
+-   **Agent fails to start**: You can manually start it with `docker exec -it <container> <agent>`

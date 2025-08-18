@@ -1,6 +1,9 @@
 #[path = "../src/config.rs"]
 mod config;
 
+#[path = "../src/cli.rs"]
+mod cli;
+
 #[path = "../src/container.rs"]
 mod container;
 

@@ -3,7 +3,7 @@ use clap::Parser;
 #[path = "../src/cli.rs"]
 mod cli;
 
-use cli::{Cli, Commands};
+use cli::{Agent, Cli, Commands};
 
 #[test]
 fn parse_continue_flag() {
@@ -41,4 +41,16 @@ fn parse_add_dir() {
         cli.add_dir.as_deref(),
         Some(std::path::Path::new("/tmp/foo"))
     );
+}
+
+#[test]
+fn default_agent_is_claude() {
+    let cli = Cli::parse_from(["codesandbox"]);
+    assert!(matches!(cli.agent, Agent::Claude));
+}
+
+#[test]
+fn parse_agent_option() {
+    let cli = Cli::parse_from(["codesandbox", "--agent", "qwen"]);
+    assert!(matches!(cli.agent, Agent::Qwen));
 }

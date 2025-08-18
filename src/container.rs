@@ -4,6 +4,7 @@ use std::env;
 use std::path::Path;
 use std::process::Command;
 
+use crate::cli::Agent;
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
 
 fn sanitize(name: &str) -> String {
@@ -214,6 +215,7 @@ pub async fn create_container(
     container_name: &str,
     current_dir: &Path,
     additional_dir: Option<&Path>,
+    agent: &Agent,
 ) -> Result<()> {
     let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
     let dockerfile_content = create_dockerfile_content(&current_user);
@@ -222,7 +224,7 @@ pub async fn create_container(
     let dockerfile_path = temp_dir.join("Dockerfile.codesandbox");
     std::fs::write(&dockerfile_path, dockerfile_content).context("Failed to write Dockerfile")?;
 
-    println!("Building Docker image with Claude Code...");
+    println!("Building Docker image...");
     let build_output = Command::new("docker")
         .args(&[
             "build",
@@ -331,10 +333,10 @@ pub async fn create_container(
         );
     }
 
-    attach_to_container(container_name, current_dir).await
+    attach_to_container(container_name, current_dir, agent).await
 }
 
-pub async fn resume_container(container_name: &str) -> Result<()> {
+pub async fn resume_container(container_name: &str, agent: &Agent) -> Result<()> {
     println!("Resuming container: {}", container_name);
 
     if !container_exists(container_name)? {
@@ -359,11 +361,15 @@ pub async fn resume_container(container_name: &str) -> Result<()> {
     }
 
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    attach_to_container(container_name, &current_dir).await
+    attach_to_container(container_name, &current_dir, agent).await
 }
 
-async fn attach_to_container(container_name: &str, current_dir: &Path) -> Result<()> {
-    println!("Attaching to container with Claude Code...");
+async fn attach_to_container(
+    container_name: &str,
+    current_dir: &Path,
+    agent: &Agent,
+) -> Result<()> {
+    println!("Attaching to container and starting {}...", agent);
 
     // Ensure the directory structure exists in the container
     let mkdir_status = Command::new("docker")
@@ -389,15 +395,16 @@ async fn attach_to_container(container_name: &str, current_dir: &Path) -> Result
             "/bin/bash",
             "-c",
             &format!(
-                "cd {} && source ~/.bashrc && exec claude --dangerously-skip-permissions",
-                current_dir.display()
+                "cd {} && source ~/.bashrc && exec {} --dangerously-skip-permissions",
+                current_dir.display(),
+                agent.command()
             ),
         ])
         .status()
         .context("Failed to attach to container")?;
 
     if !attach_status.success() {
-        println!("Failed to start Claude Code automatically.");
+        println!("Failed to start {} automatically.", agent);
         println!(
             "You can manually attach with: docker exec -it {} /bin/bash",
             container_name

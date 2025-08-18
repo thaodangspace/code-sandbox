@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     if cli.continue_ {
         match load_last_container()? {
             Some(container_name) => {
-                resume_container(&container_name).await?;
+                resume_container(&container_name, &cli.agent).await?;
                 return Ok(());
             }
             None => {
@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
         match input.parse::<usize>() {
             Ok(num) if num >= 1 && num <= containers.len() => {
                 let selected = &containers[num - 1];
-                resume_container(selected).await?;
+                resume_container(selected, &cli.agent).await?;
             }
             _ => println!("Invalid selection"),
         }
@@ -91,9 +91,18 @@ async fn main() -> Result<()> {
 
     let container_name = generate_container_name(&current_dir);
 
-    println!("Starting Claude Code Sandbox container: {container_name}");
+    println!(
+        "Starting {} Code Sandbox container: {container_name}",
+        cli.agent
+    );
 
-    create_container(&container_name, &current_dir, additional_dir.as_deref()).await?;
+    create_container(
+        &container_name,
+        &current_dir,
+        additional_dir.as_deref(),
+        &cli.agent,
+    )
+    .await?;
     save_last_container(&container_name)?;
 
     println!("Container {container_name} started successfully!");
@@ -101,4 +110,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-

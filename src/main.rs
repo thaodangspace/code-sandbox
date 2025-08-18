@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
         None => None,
     };
 
-    let container_name = generate_container_name(&current_dir);
+    let container_name = generate_container_name(&current_dir, &cli.agent);
 
     println!(
         "Starting {} Code Sandbox container: {container_name}",

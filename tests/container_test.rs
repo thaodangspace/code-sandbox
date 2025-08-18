@@ -7,6 +7,7 @@ mod cli;
 #[path = "../src/container.rs"]
 mod container;
 
+use cli::Agent;
 use container::{auto_remove_old_containers, generate_container_name};
 use std::{env, fs, process::Command};
 use tempfile::tempdir;
@@ -41,8 +42,8 @@ fn test_generate_container_name_with_git_repo() {
         .status()
         .expect("git commit");
 
-    let name = generate_container_name(&repo_path);
-    let prefix = "csb-my-repo--feature-test-";
+    let name = generate_container_name(&repo_path, &Agent::Claude);
+    let prefix = "csb-claude-my-repo--feature-test-";
     assert!(name.starts_with(prefix));
     let ts = &name[prefix.len()..];
     assert_eq!(ts.len(), 10);
@@ -55,8 +56,8 @@ fn test_generate_container_name_without_git_repo() {
     let dir_path = tmp.path().join("Another Repo");
     fs::create_dir(&dir_path).expect("create dir");
 
-    let name = generate_container_name(&dir_path);
-    let prefix = "csb-another-repo-unknown-";
+    let name = generate_container_name(&dir_path, &Agent::Claude);
+    let prefix = "csb-claude-another-repo-unknown-";
     assert!(name.starts_with(prefix));
     let ts = &name[prefix.len()..];
     assert_eq!(ts.len(), 10);

@@ -7,6 +7,7 @@ mod cli;
 #[path = "../src/container.rs"]
 mod container;
 
+use cli::Agent;
 use std::fs;
 use tempfile::tempdir;
 
@@ -16,7 +17,7 @@ fn test_generate_container_name_sanitizes_directory() {
     let project_dir = tmp_dir.path().join("My Project");
     fs::create_dir(&project_dir).expect("create project dir");
 
-    let name = container::generate_container_name(&project_dir);
+    let name = container::generate_container_name(&project_dir, &Agent::Claude);
 
-    assert!(name.starts_with("csb-my-project-"));
+    assert!(name.starts_with("csb-claude-my-project-"));
 }

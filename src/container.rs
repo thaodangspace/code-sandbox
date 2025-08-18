@@ -20,12 +20,14 @@ fn sanitize(name: &str) -> String {
         .collect()
 }
 
-pub fn generate_container_name(current_dir: &Path) -> String {
+pub fn generate_container_name(current_dir: &Path, agent: &Agent) -> String {
     let dir_name = current_dir
         .file_name()
         .and_then(|s| s.to_str())
         .map(sanitize)
         .unwrap_or_else(|| "unknown".to_string());
+
+    let agent_name = sanitize(agent.command());
 
     let branch_output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -39,7 +41,7 @@ pub fn generate_container_name(current_dir: &Path) -> String {
 
     let timestamp = Local::now().format("%y%m%d%H%M").to_string();
 
-    format!("csb-{dir_name}-{branch_name}-{timestamp}")
+    format!("csb-{agent_name}-{dir_name}-{branch_name}-{timestamp}")
 }
 
 pub fn cleanup_containers(current_dir: &Path) -> Result<()> {
@@ -48,7 +50,7 @@ pub fn cleanup_containers(current_dir: &Path) -> Result<()> {
         .and_then(|s| s.to_str())
         .map(sanitize)
         .unwrap_or_else(|| "unknown".to_string());
-    let prefix = format!("csb-{dir_name}-");
+    let dir_marker = format!("-{dir_name}-");
 
     let list_output = Command::new("docker")
         .args(["ps", "-a", "--format", "{{.Names}}"])
@@ -63,7 +65,10 @@ pub fn cleanup_containers(current_dir: &Path) -> Result<()> {
     }
 
     let names = String::from_utf8_lossy(&list_output.stdout);
-    for name in names.lines().filter(|n| n.starts_with(&prefix)) {
+    for name in names
+        .lines()
+        .filter(|n| n.starts_with("csb-") && n.contains(&dir_marker))
+    {
         println!("Removing container {name}");
         let rm_output = Command::new("docker")
             .args(["rm", "-f", name])
@@ -88,7 +93,7 @@ pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
         .and_then(|s| s.to_str())
         .map(sanitize)
         .unwrap_or_else(|| "unknown".to_string());
-    let prefix = format!("csb-{dir_name}-");
+    let dir_marker = format!("-{dir_name}-");
 
     let list_output = Command::new("docker")
         .args(["ps", "-a", "--format", "{{.Names}}"])
@@ -105,7 +110,7 @@ pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
     let names = String::from_utf8_lossy(&list_output.stdout);
     let containers = names
         .lines()
-        .filter(|n| n.starts_with(&prefix))
+        .filter(|n| n.starts_with("csb-") && n.contains(&dir_marker))
         .map(|s| s.to_string())
         .collect();
     Ok(containers)

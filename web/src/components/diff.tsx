@@ -12,21 +12,26 @@ interface ChangeResponse {
   files: FileDiff[];
 }
 
-export default function DiffView() {
+interface DiffViewProps {
+  containerName?: string;
+}
+
+export default function DiffView({ containerName }: DiffViewProps) {
   const [container] = useAtom(containerAtom);
+  const activeContainer = containerName || container;
 
   const { data, isLoading, error } = useQuery<ChangeResponse>({
-    queryKey: ['diff', container],
+    queryKey: ['diff', activeContainer],
     queryFn: async () => {
-      const res = await fetch(`/api/changed/${container}`);
+      const res = await fetch(`/api/changed/${activeContainer}`);
       if (!res.ok) throw new Error('failed');
       return res.json();
     },
-    enabled: !!container,
+    enabled: !!activeContainer,
     refetchInterval: 5000
   });
 
-  if (!container) return <p className="p-4">No container specified.</p>;
+  if (!activeContainer) return <p className="p-4">No container specified.</p>;
   if (isLoading) return <p className="p-4">Loading...</p>;
   if (error) return <p className="p-4">Error loading diff.</p>;
 

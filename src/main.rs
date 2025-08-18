@@ -98,5 +98,3 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod main_test;

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
-use chrono::Local;
+use chrono::{Local, Utc};
 use std::env;
 use std::path::Path;
 use std::process::Command;
 
+use crate::cli::Agent;
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
 
 fn sanitize(name: &str) -> String {
@@ -110,6 +111,70 @@ pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
     Ok(containers)
 }
 
+pub fn auto_remove_old_containers(minutes: u64) -> Result<()> {
+    if minutes == 0 {
+        return Ok(());
+    }
+
+    let cutoff = Utc::now() - chrono::Duration::minutes(minutes as i64);
+
+    let list_output = Command::new("docker")
+        .args(["ps", "-a", "--format", "{{.Names}}"])
+        .output()
+        .context("Failed to list Docker containers")?;
+
+    if !list_output.status.success() {
+        anyhow::bail!(
+            "Failed to list containers: {}",
+            String::from_utf8_lossy(&list_output.stderr)
+        );
+    }
+
+    let names = String::from_utf8_lossy(&list_output.stdout);
+    for name in names.lines().filter(|n| n.starts_with("csb-")) {
+        let inspect_output = Command::new("docker")
+            .args(["inspect", "-f", "{{.Created}}", name])
+            .output()
+            .context("Failed to inspect container")?;
+        if !inspect_output.status.success() {
+            continue;
+        }
+        let created_str = String::from_utf8_lossy(&inspect_output.stdout)
+            .trim()
+            .to_string();
+        let created = match chrono::DateTime::parse_from_rfc3339(&created_str) {
+            Ok(c) => c.with_timezone(&Utc),
+            Err(_) => continue,
+        };
+        if created > cutoff {
+            continue;
+        }
+
+        let logs_output = Command::new("docker")
+            .args(["logs", name])
+            .output()
+            .context("Failed to check container logs")?;
+        if !logs_output.status.success() {
+            continue;
+        }
+        if logs_output.stdout.is_empty() && logs_output.stderr.is_empty() {
+            println!("Auto removing unused container {name}");
+            let rm_output = Command::new("docker")
+                .args(["rm", "-f", name])
+                .output()
+                .context("Failed to remove container")?;
+            if !rm_output.status.success() {
+                anyhow::bail!(
+                    "Failed to remove container {}: {}",
+                    name,
+                    String::from_utf8_lossy(&rm_output.stderr)
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn check_docker_availability() -> Result<()> {
     let output = Command::new("docker").arg("--version").output().context(
         "Failed to check Docker availability. Make sure Docker is installed and running.",
@@ -150,6 +215,7 @@ pub async fn create_container(
     container_name: &str,
     current_dir: &Path,
     additional_dir: Option<&Path>,
+    agent: &Agent,
 ) -> Result<()> {
     let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
     let dockerfile_content = create_dockerfile_content(&current_user);
@@ -158,7 +224,7 @@ pub async fn create_container(
     let dockerfile_path = temp_dir.join("Dockerfile.codesandbox");
     std::fs::write(&dockerfile_path, dockerfile_content).context("Failed to write Dockerfile")?;
 
-    println!("Building Docker image with Claude Code...");
+    println!("Building Docker image...");
     let build_output = Command::new("docker")
         .args(&[
             "build",
@@ -267,10 +333,10 @@ pub async fn create_container(
         );
     }
 
-    attach_to_container(container_name, current_dir).await
+    attach_to_container(container_name, current_dir, agent).await
 }
 
-pub async fn resume_container(container_name: &str) -> Result<()> {
+pub async fn resume_container(container_name: &str, agent: &Agent) -> Result<()> {
     println!("Resuming container: {}", container_name);
 
     if !container_exists(container_name)? {
@@ -295,11 +361,15 @@ pub async fn resume_container(container_name: &str) -> Result<()> {
     }
 
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    attach_to_container(container_name, &current_dir).await
+    attach_to_container(container_name, &current_dir, agent).await
 }
 
-async fn attach_to_container(container_name: &str, current_dir: &Path) -> Result<()> {
-    println!("Attaching to container with Claude Code...");
+async fn attach_to_container(
+    container_name: &str,
+    current_dir: &Path,
+    agent: &Agent,
+) -> Result<()> {
+    println!("Attaching to container and starting {}...", agent);
 
     // Ensure the directory structure exists in the container
     let mkdir_status = Command::new("docker")
@@ -325,15 +395,16 @@ async fn attach_to_container(container_name: &str, current_dir: &Path) -> Result
             "/bin/bash",
             "-c",
             &format!(
-                "cd {} && source ~/.bashrc && exec claude --dangerously-skip-permissions",
-                current_dir.display()
+                "cd {} && source ~/.bashrc && exec {} --dangerously-skip-permissions",
+                current_dir.display(),
+                agent.command()
             ),
         ])
         .status()
         .context("Failed to attach to container")?;
 
     if !attach_status.success() {
-        println!("Failed to start Claude Code automatically.");
+        println!("Failed to start {} automatically.", agent);
         println!(
             "You can manually attach with: docker exec -it {} /bin/bash",
             container_name

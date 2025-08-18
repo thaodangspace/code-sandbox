@@ -1,13 +1,15 @@
 #[path = "../src/config.rs"]
 mod config;
 
+#[path = "../src/cli.rs"]
+mod cli;
+
 #[path = "../src/container.rs"]
 mod container;
 
-use container::generate_container_name;
+use container::{auto_remove_old_containers, generate_container_name};
+use std::{env, fs, process::Command};
 use tempfile::tempdir;
-use std::fs;
-use std::process::Command;
 
 #[test]
 fn test_generate_container_name_with_git_repo() {
@@ -59,4 +61,66 @@ fn test_generate_container_name_without_git_repo() {
     let ts = &name[prefix.len()..];
     assert_eq!(ts.len(), 10);
     assert!(ts.chars().all(|c| c.is_ascii_digit()));
+}
+
+#[test]
+fn test_auto_remove_old_containers() {
+    let tmp = tempdir().expect("temp dir");
+    let bin_dir = tmp.path();
+    let rm_log = bin_dir.join("rm.log");
+
+    let docker_path = bin_dir.join("docker");
+    let script = r#"#!/bin/bash
+set -e
+cmd="$1"
+shift
+case "$cmd" in
+  ps)
+    echo "csb-old"
+    echo "csb-recent"
+    ;;
+  inspect)
+    name="${!#}"
+    if [ "$name" = "csb-old" ]; then
+      echo "1970-01-01T00:00:00Z"
+    else
+      date -u +"%Y-%m-%dT%H:%M:%SZ"
+    fi
+    ;;
+  logs)
+    name="${!#}"
+    if [ "$name" = "csb-old" ]; then
+      :
+    else
+      echo "has logs"
+    fi
+    ;;
+  rm)
+    name="${!#}"
+    echo "$name" >> "__LOG__"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+"#
+    .replace("__LOG__", rm_log.to_str().unwrap());
+    fs::write(&docker_path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&docker_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&docker_path, perms).unwrap();
+    }
+
+    let original_path = env::var("PATH").unwrap_or_default();
+    env::set_var("PATH", format!("{}:{}", bin_dir.display(), original_path));
+
+    auto_remove_old_containers(1).unwrap();
+
+    env::set_var("PATH", original_path);
+
+    let removed = fs::read_to_string(&rm_log).unwrap();
+    assert_eq!(removed.trim(), "csb-old");
 }

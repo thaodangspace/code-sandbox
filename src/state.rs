@@ -40,3 +40,7 @@ pub fn clear_last_container() -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "state_test.rs"]
+mod state_test;

@@ -3,6 +3,7 @@ mod config;
 mod container;
 mod settings;
 mod state;
+mod worktree;
 
 use anyhow::{Context, Result};
 use std::env;
@@ -16,11 +17,16 @@ use container::{
 };
 use settings::load_settings;
 use state::{clear_last_container, load_last_container, save_last_container};
+use worktree::create_worktree;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse_args();
-    let current_dir = env::current_dir().context("Failed to get current directory")?;
+    let mut current_dir = env::current_dir().context("Failed to get current directory")?;
+    if let Some(branch) = &cli.worktree {
+        current_dir = create_worktree(&current_dir, branch)
+            .with_context(|| format!("Failed to create worktree for branch {}", branch))?;
+    }
     let settings = load_settings().unwrap_or_default();
 
     check_docker_availability()?;

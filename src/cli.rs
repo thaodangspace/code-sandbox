@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "codesandbox")]
@@ -17,6 +18,13 @@ pub struct Cli {
         conflicts_with = "continue_"
     )]
     pub cleanup: bool,
+
+    #[arg(
+        long = "add_dir",
+        value_name = "DIR",
+        help = "Additional directory to mount read-only inside the container"
+    )]
+    pub add_dir: Option<PathBuf>,
 
     #[command(subcommand)]
     pub command: Option<Commands>,

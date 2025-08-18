@@ -146,7 +146,11 @@ pub fn container_exists(container_name: &str) -> Result<bool> {
     Ok(output.status.success())
 }
 
-pub async fn create_container(container_name: &str, current_dir: &Path) -> Result<()> {
+pub async fn create_container(
+    container_name: &str,
+    current_dir: &Path,
+    additional_dir: Option<&Path>,
+) -> Result<()> {
     let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
     let dockerfile_content = create_dockerfile_content(&current_user);
 
@@ -185,6 +189,11 @@ pub async fn create_container(container_name: &str, current_dir: &Path) -> Resul
         "-v",
         &format!("{}:{}", current_dir.display(), current_dir.display()),
     ]);
+
+    if let Some(dir) = additional_dir {
+        docker_run.args(&["-v", &format!("{}:{}:ro", dir.display(), dir.display())]);
+        println!("Mounting additional directory read-only: {}", dir.display());
+    }
 
     if let Some(claude_config_dir) = get_claude_config_dir() {
         if claude_config_dir.exists() {

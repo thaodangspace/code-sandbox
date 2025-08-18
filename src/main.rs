@@ -5,6 +5,7 @@ mod state;
 
 use anyhow::{Context, Result};
 use std::env;
+use std::fs;
 use std::io::{self, Write};
 
 use cli::{Cli, Commands};
@@ -76,11 +77,19 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    let additional_dir = match &cli.add_dir {
+        Some(dir) => Some(
+            fs::canonicalize(dir)
+                .with_context(|| format!("Failed to canonicalize path {}", dir.display()))?,
+        ),
+        None => None,
+    };
+
     let container_name = generate_container_name(&current_dir);
 
     println!("Starting Claude Code Sandbox container: {container_name}");
 
-    create_container(&container_name, &current_dir).await?;
+    create_container(&container_name, &current_dir, additional_dir.as_deref()).await?;
     save_last_container(&container_name)?;
 
     println!("Container {container_name} started successfully!");

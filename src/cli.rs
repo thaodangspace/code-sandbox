@@ -7,14 +7,14 @@ pub struct Cli {
     #[arg(
         long,
         help = "Resume the last created container",
-        conflicts_with_all = ["cleanup", "command"]
+        conflicts_with = "cleanup"
     )]
     pub continue_: bool,
 
     #[arg(
         long,
         help = "Remove all containers created from this directory",
-        conflicts_with_all = ["continue_", "command"]
+        conflicts_with = "continue_"
     )]
     pub cleanup: bool,
 

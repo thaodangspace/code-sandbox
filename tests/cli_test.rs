@@ -54,3 +54,9 @@ fn parse_agent_option() {
     let cli = Cli::parse_from(["codesandbox", "--agent", "qwen"]);
     assert!(matches!(cli.agent, Agent::Qwen));
 }
+
+#[test]
+fn parse_worktree_option() {
+    let cli = Cli::parse_from(["codesandbox", "--worktree", "feature"]);
+    assert_eq!(cli.worktree.as_deref(), Some("feature"));
+}

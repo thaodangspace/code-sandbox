@@ -27,6 +27,13 @@ pub struct Cli {
     pub add_dir: Option<PathBuf>,
 
     #[arg(
+        long = "worktree",
+        value_name = "BRANCH",
+        help = "Create and use a git worktree for the specified branch"
+    )]
+    pub worktree: Option<String>,
+
+    #[arg(
         long,
         value_enum,
         default_value_t = Agent::Claude,

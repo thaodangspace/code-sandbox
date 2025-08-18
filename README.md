@@ -9,6 +9,7 @@ A Rust CLI tool that creates isolated Ubuntu Docker containers with Claude Code 
 -   Automatically copies your `.claude` configuration
 -   Starts Claude Code in the container
 -   Generates contextual container names to avoid conflicts (`csb-{dir}-{branch}-{yymmddhhmm}`)
+-   Cleans up all containers for a directory with `codesandbox --cleanup`
 
 ## Prerequisites
 
@@ -74,10 +75,10 @@ The tool automatically detects and mounts your Claude configuration from:
 
 ## Cleanup
 
-To remove containers when done:
+To remove all containers created from the current directory:
 
 ```bash
-docker rm -f <container-name>
+codesandbox --cleanup
 ```
 
 To remove the built image:

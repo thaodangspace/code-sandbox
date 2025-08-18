@@ -8,9 +8,10 @@ use std::env;
 
 use cli::Cli;
 use container::{
-    check_docker_availability, create_container, generate_container_name, resume_container,
+    check_docker_availability, cleanup_containers, create_container, generate_container_name,
+    resume_container,
 };
-use state::{load_last_container, save_last_container};
+use state::{clear_last_container, load_last_container, save_last_container};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -18,6 +19,16 @@ async fn main() -> Result<()> {
     let current_dir = env::current_dir().context("Failed to get current directory")?;
 
     check_docker_availability()?;
+
+    if cli.cleanup {
+        cleanup_containers(&current_dir)?;
+        clear_last_container()?;
+        println!(
+            "Removed all Code Sandbox containers for directory {}",
+            current_dir.display()
+        );
+        return Ok(());
+    }
 
     if cli.continue_ {
         match load_last_container()? {
@@ -33,16 +44,13 @@ async fn main() -> Result<()> {
 
     let container_name = generate_container_name(&current_dir);
 
-    println!("Starting Claude Code Sandbox container: {}", container_name);
+    println!("Starting Claude Code Sandbox container: {container_name}");
 
     create_container(&container_name, &current_dir).await?;
     save_last_container(&container_name)?;
 
-    println!("Container {} started successfully!", container_name);
-    println!(
-        "To attach to the container, run: docker exec -it {} /bin/bash",
-        container_name
-    );
+    println!("Container {container_name} started successfully!");
+    println!("To attach to the container, run: docker exec -it {container_name} /bin/bash");
 
     Ok(())
 }

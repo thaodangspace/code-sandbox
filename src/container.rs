@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::Local;
+use chrono::{Local, Utc};
 use std::env;
 use std::path::Path;
 use std::process::Command;
@@ -108,6 +108,70 @@ pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
         .map(|s| s.to_string())
         .collect();
     Ok(containers)
+}
+
+pub fn auto_remove_old_containers(minutes: u64) -> Result<()> {
+    if minutes == 0 {
+        return Ok(());
+    }
+
+    let cutoff = Utc::now() - chrono::Duration::minutes(minutes as i64);
+
+    let list_output = Command::new("docker")
+        .args(["ps", "-a", "--format", "{{.Names}}"])
+        .output()
+        .context("Failed to list Docker containers")?;
+
+    if !list_output.status.success() {
+        anyhow::bail!(
+            "Failed to list containers: {}",
+            String::from_utf8_lossy(&list_output.stderr)
+        );
+    }
+
+    let names = String::from_utf8_lossy(&list_output.stdout);
+    for name in names.lines().filter(|n| n.starts_with("csb-")) {
+        let inspect_output = Command::new("docker")
+            .args(["inspect", "-f", "{{.Created}}", name])
+            .output()
+            .context("Failed to inspect container")?;
+        if !inspect_output.status.success() {
+            continue;
+        }
+        let created_str = String::from_utf8_lossy(&inspect_output.stdout)
+            .trim()
+            .to_string();
+        let created = match chrono::DateTime::parse_from_rfc3339(&created_str) {
+            Ok(c) => c.with_timezone(&Utc),
+            Err(_) => continue,
+        };
+        if created > cutoff {
+            continue;
+        }
+
+        let logs_output = Command::new("docker")
+            .args(["logs", name])
+            .output()
+            .context("Failed to check container logs")?;
+        if !logs_output.status.success() {
+            continue;
+        }
+        if logs_output.stdout.is_empty() && logs_output.stderr.is_empty() {
+            println!("Auto removing unused container {name}");
+            let rm_output = Command::new("docker")
+                .args(["rm", "-f", name])
+                .output()
+                .context("Failed to remove container")?;
+            if !rm_output.status.success() {
+                anyhow::bail!(
+                    "Failed to remove container {}: {}",
+                    name,
+                    String::from_utf8_lossy(&rm_output.stderr)
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn check_docker_availability() -> Result<()> {

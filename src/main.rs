@@ -87,6 +87,15 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    if cli.worktree.is_some() {
+        let containers = list_containers(&current_dir)?;
+        if let Some(latest) = containers.first() {
+            println!("Attaching to existing container for worktree: {}", latest);
+            resume_container(latest, &cli.agent).await?;
+            return Ok(());
+        }
+    }
+
     let additional_dir = match &cli.add_dir {
         Some(dir) => Some(
             fs::canonicalize(dir)

@@ -38,3 +38,31 @@ fn create_missing_branch() {
         .expect("git rev-parse");
     assert!(branch_status.success());
 }
+
+#[test]
+fn reuse_existing_worktree() {
+    let tmp = tempdir().expect("temp dir");
+    let repo_path = tmp.path();
+
+    Command::new("git")
+        .arg("init")
+        .current_dir(repo_path)
+        .status()
+        .expect("git init");
+    fs::write(repo_path.join("file.txt"), "test").expect("write file");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo_path)
+        .status()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(repo_path)
+        .status()
+        .expect("git commit");
+
+    let first = create_worktree(repo_path, "feature").expect("create worktree");
+    let second = create_worktree(repo_path, "feature").expect("reuse worktree");
+    assert!(first.exists());
+    assert_eq!(first, second);
+}

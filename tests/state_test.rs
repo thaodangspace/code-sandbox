@@ -1,4 +1,7 @@
-use super::{clear_last_container, load_last_container, save_last_container};
+#[path = "../src/state.rs"]
+mod state;
+
+use state::{clear_last_container, load_last_container, save_last_container};
 use std::env;
 use tempfile::tempdir;
 

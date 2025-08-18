@@ -1,4 +1,9 @@
-use super::container;
+#[path = "../src/config.rs"]
+mod config;
+
+#[path = "../src/container.rs"]
+mod container;
+
 use std::fs;
 use tempfile::tempdir;
 

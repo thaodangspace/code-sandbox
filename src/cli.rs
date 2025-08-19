@@ -57,6 +57,10 @@ pub enum Commands {
     Serve {
         #[arg(short = 'd', long = "daemon", help = "Run server in the background")]
         daemon: bool,
+        #[arg(long, help = "Stop the running server", conflicts_with = "restart")]
+        stop: bool,
+        #[arg(long, help = "Restart the server", conflicts_with = "stop")]
+        restart: bool,
     },
 }
 

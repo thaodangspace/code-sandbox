@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod container;
+mod server;
 mod settings;
 mod state;
 mod worktree;
@@ -9,7 +10,7 @@ use anyhow::{Context, Result};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use cli::{Cli, Commands};
 use container::{
@@ -23,6 +24,24 @@ use worktree::create_worktree;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse_args();
+
+    if let Some(Commands::Serve { daemon }) = &cli.command {
+        check_docker_availability()?;
+        if *daemon {
+            let exe = env::current_exe()?;
+            Command::new(exe)
+                .arg("serve")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .stdin(Stdio::null())
+                .spawn()
+                .context("failed to start daemonized server")?;
+        } else {
+            server::serve().await?;
+        }
+        return Ok(());
+    }
+
     let mut current_dir = env::current_dir().context("Failed to get current directory")?;
     if let Some(branch) = &cli.worktree {
         current_dir = create_worktree(&current_dir, branch)
@@ -61,7 +80,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    if let Some(Commands::Ps) = cli.command {
+    if let Some(Commands::Ps) = cli.command.as_ref() {
         let containers = list_all_containers()?;
         if containers.is_empty() {
             println!("No running Code Sandbox containers found.");
@@ -122,7 +141,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    if let Some(Commands::Ls) = cli.command {
+    if let Some(Commands::Ls) = cli.command.as_ref() {
         let containers = list_containers(&current_dir)?;
         if containers.is_empty() {
             println!(

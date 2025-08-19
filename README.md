@@ -180,7 +180,13 @@ This repository includes an optional HTTP server that reports file changes insid
 Start the server:
 
 ```bash
-cargo run --bin api
+codesandbox serve
+```
+
+Run it as a background daemon:
+
+```bash
+codesandbox serve -d
 ```
 
 The server listens on port 6789. Query the changes for a specific container:

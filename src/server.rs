@@ -1,3 +1,4 @@
+use anyhow::Result;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -169,7 +170,7 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
         Ok(child) => child,
         Err(e) => {
             let _ = socket
-                .send(Message::Text(format!("failed to start shell: {}", e)))
+                .send(Message::Text(format!("failed to start shell: {e}")))
                 .await;
             return;
         }
@@ -222,11 +223,10 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
 
     let _ = stdin.shutdown().await;
     let _ = stdout_task.await;
-    let _ = child.kill();
+    let _ = child.kill().await;
 }
 
-#[tokio::main]
-async fn main() {
+pub async fn serve() -> Result<()> {
     let app = Router::new()
         .route("/api/changed/:container", get(get_changed))
         .route("/terminal/:container", get(terminal_ws));
@@ -234,6 +234,6 @@ async fn main() {
     println!("Listening on {addr}");
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+    Ok(())
 }

@@ -35,6 +35,18 @@ fn parse_ps_subcommand() {
 }
 
 #[test]
+fn parse_serve_subcommand() {
+    let cli = Cli::parse_from(["codesandbox", "serve"]);
+    assert!(matches!(cli.command, Some(Commands::Serve { daemon: false })));
+}
+
+#[test]
+fn parse_serve_daemon_flag() {
+    let cli = Cli::parse_from(["codesandbox", "serve", "-d"]);
+    assert!(matches!(cli.command, Some(Commands::Serve { daemon: true })));
+}
+
+#[test]
 fn conflicting_flags_error() {
     let result = Cli::try_parse_from(["codesandbox", "--continue", "--cleanup"]);
     assert!(result.is_err());

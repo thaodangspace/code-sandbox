@@ -7,10 +7,6 @@ edition = "2021"
 name = "codesandbox"
 path = "src/main.rs"
 
-[[bin]]
-name = "api"
-path = "src/server.rs"
-
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }

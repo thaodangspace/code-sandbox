@@ -45,7 +45,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum Commands {
     #[command(about = "List containers for this directory and optionally attach to one")]
     Ls,
@@ -53,6 +53,11 @@ pub enum Commands {
         about = "List all running Code Sandbox containers and optionally attach or open their directory"
     )]
     Ps,
+    #[command(about = "Start the Code Sandbox API server")]
+    Serve {
+        #[arg(short = 'd', long = "daemon", help = "Run server in the background")]
+        daemon: bool,
+    },
 }
 
 #[derive(ValueEnum, Clone, Debug)]

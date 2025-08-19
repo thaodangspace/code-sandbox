@@ -163,7 +163,7 @@ async fn terminal_ws(ws: WebSocketUpgrade, Path(container): Path<String>) -> imp
 
 async fn handle_terminal(mut socket: WebSocket, container: String) {
     let mut child = match Command::new("docker")
-        .args(["exec", "-i", &container, "/bin/bash"])
+        .args(["exec", "-i", "-t", &container, "/bin/bash"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -180,31 +180,21 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
 
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
 
     let (mut sender, mut receiver) = socket.split();
 
-    // Forward stdout/stderr to websocket
+    // Forward shell output to websocket
     let mut out_buf = [0u8; 1024];
-    let mut err_buf = [0u8; 1024];
-
     let stdout_task = tokio::spawn(async move {
         loop {
-            tokio::select! {
-                Ok(n) = stdout.read(&mut out_buf) => {
-                    if n == 0 { break; }
+            match stdout.read(&mut out_buf).await {
+                Ok(n) if n > 0 => {
                     let text = String::from_utf8_lossy(&out_buf[..n]).to_string();
                     if sender.send(Message::Text(text)).await.is_err() {
                         break;
                     }
                 }
-                Ok(n) = stderr.read(&mut err_buf) => {
-                    if n == 0 { continue; }
-                    let text = String::from_utf8_lossy(&err_buf[..n]).to_string();
-                    if sender.send(Message::Text(text)).await.is_err() {
-                        break;
-                    }
-                }
+                _ => break,
             }
         }
     });

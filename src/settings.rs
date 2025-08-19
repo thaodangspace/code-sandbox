@@ -14,9 +14,14 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
+        let mut default_flags = HashMap::new();
+        default_flags.insert("claude".to_string(), "--dangerously-skip-permissions".to_string());
+        default_flags.insert("gemini".to_string(), "--yolo".to_string());
+        default_flags.insert("qwen".to_string(), "--yolo".to_string());
+        
         Self {
             auto_remove_minutes: Some(60),
-            skip_permission_flags: HashMap::new(),
+            skip_permission_flags: default_flags,
         }
     }
 }
@@ -54,7 +59,9 @@ mod tests {
 
         let settings = load_settings().unwrap();
         assert_eq!(settings.auto_remove_minutes, Some(60));
-        assert!(settings.skip_permission_flags.is_empty());
+        assert_eq!(settings.skip_permission_flags.get("claude").map(String::as_str), Some("--dangerously-skip-permissions"));
+        assert_eq!(settings.skip_permission_flags.get("gemini").map(String::as_str), Some("--yolo"));
+        assert_eq!(settings.skip_permission_flags.get("qwen").map(String::as_str), Some("--yolo"));
 
         if let Some(val) = original {
             env::set_var("CODESANDBOX_CONFIG_HOME", val);

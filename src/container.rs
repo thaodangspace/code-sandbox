@@ -149,11 +149,12 @@ fn extract_project_name(name: &str) -> String {
 }
 
 fn get_container_directory(name: &str) -> Result<Option<String>> {
+    // First try to get the main project mount (where source equals destination and is read-write)
     let output = Command::new("docker")
         .args([
             "inspect",
             "-f",
-            "{{range .Mounts}}{{if and .RW (eq .Source .Destination)}}{{.Source}}{{end}}{{end}}",
+            "{{range .Mounts}}{{if and .RW (eq .Source .Destination)}}{{.Source}}{{\"\\n\"}}{{end}}{{end}}",
             name,
         ])
         .output()
@@ -161,12 +162,16 @@ fn get_container_directory(name: &str) -> Result<Option<String>> {
     if !output.status.success() {
         return Ok(None);
     }
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(path))
+    let paths = String::from_utf8_lossy(&output.stdout);
+    
+    // Filter out config directories and get the first valid project path
+    for line in paths.lines() {
+        let path = line.trim();
+        if !path.is_empty() && !path.contains("/.claude") && !path.contains("/.serena") {
+            return Ok(Some(path.to_string()));
+        }
     }
+    Ok(None)
 }
 
 pub fn auto_remove_old_containers(minutes: u64) -> Result<()> {

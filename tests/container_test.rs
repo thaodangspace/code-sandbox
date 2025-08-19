@@ -9,8 +9,10 @@ mod container;
 
 use cli::Agent;
 use container::{auto_remove_old_containers, generate_container_name};
-use std::{env, fs, process::Command};
+use std::{env, fs, process::Command, sync::Mutex};
 use tempfile::tempdir;
+
+static DOCKER_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_generate_container_name_with_git_repo() {
@@ -66,6 +68,7 @@ fn test_generate_container_name_without_git_repo() {
 
 #[test]
 fn test_auto_remove_old_containers() {
+    let _lock = DOCKER_LOCK.lock().unwrap();
     let tmp = tempdir().expect("temp dir");
     let bin_dir = tmp.path();
     let rm_log = bin_dir.join("rm.log");
@@ -124,4 +127,44 @@ esac
 
     let removed = fs::read_to_string(&rm_log).unwrap();
     assert_eq!(removed.trim(), "csb-old");
+}
+
+#[test]
+fn test_list_all_containers() {
+    let _lock = DOCKER_LOCK.lock().unwrap();
+    let tmp = tempdir().expect("temp dir");
+    let bin_dir = tmp.path();
+    let docker_path = bin_dir.join("docker");
+    let script = r#"#!/bin/bash
+cmd="$1"
+shift
+case "$cmd" in
+  ps)
+    echo "csb-claude-proj-main-123456"
+    echo "unrelated"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+"#;
+    fs::write(&docker_path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&docker_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&docker_path, perms).unwrap();
+    }
+
+    let original_path = env::var("PATH").unwrap_or_default();
+    env::set_var("PATH", format!("{}:{}", bin_dir.display(), original_path));
+
+    let containers = container::list_all_containers().unwrap();
+
+    env::set_var("PATH", original_path);
+
+    assert_eq!(containers.len(), 1);
+    assert_eq!(containers[0].0, "proj");
+    assert_eq!(containers[0].1, "csb-claude-proj-main-123456");
 }

@@ -25,7 +25,21 @@ use worktree::create_worktree;
 async fn main() -> Result<()> {
     let cli = Cli::parse_args();
 
-    if let Some(Commands::Serve { daemon }) = &cli.command {
+    if let Some(Commands::Serve {
+        daemon,
+        stop,
+        restart,
+    }) = &cli.command
+    {
+        if *stop {
+            server::stop().await?;
+            return Ok(());
+        }
+
+        if *restart {
+            let _ = server::stop().await;
+        }
+
         check_docker_availability()?;
         if *daemon {
             let exe = env::current_exe()?;

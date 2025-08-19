@@ -116,7 +116,7 @@ pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
     Ok(containers)
 }
 
-pub fn list_all_containers() -> Result<Vec<(String, String)>> {
+pub fn list_all_containers() -> Result<Vec<(String, String, Option<String>)>> {
     let list_output = Command::new("docker")
         .args(["ps", "--format", "{{.Names}}"])
         .output()
@@ -130,11 +130,12 @@ pub fn list_all_containers() -> Result<Vec<(String, String)>> {
     }
 
     let names = String::from_utf8_lossy(&list_output.stdout);
-    let containers = names
-        .lines()
-        .filter(|n| n.starts_with("csb-"))
-        .map(|name| (extract_project_name(name), name.to_string()))
-        .collect();
+    let mut containers = Vec::new();
+    for name in names.lines().filter(|n| n.starts_with("csb-")) {
+        let project = extract_project_name(name);
+        let path = get_container_directory(name).ok().flatten();
+        containers.push((project, name.to_string(), path));
+    }
     Ok(containers)
 }
 
@@ -144,6 +145,27 @@ fn extract_project_name(name: &str) -> String {
         parts[2].to_string()
     } else {
         "unknown".to_string()
+    }
+}
+
+fn get_container_directory(name: &str) -> Result<Option<String>> {
+    let output = Command::new("docker")
+        .args([
+            "inspect",
+            "-f",
+            "{{range .Mounts}}{{if and .RW (eq .Source .Destination)}}{{.Source}}{{end}}{{end}}",
+            name,
+        ])
+        .output()
+        .context("Failed to inspect container")?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(path))
     }
 }
 

@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::process::Command;
 
 use cli::{Cli, Commands};
 use container::{
@@ -66,9 +67,57 @@ async fn main() -> Result<()> {
             println!("No running Code Sandbox containers found.");
             return Ok(());
         }
-        println!("{:<20}{}", "Project", "Container");
-        for (project, name) in containers {
-            println!("{:<20}{}", project, name);
+        println!(
+            "{:<4}{:<20}{:<20}{}",
+            "No.", "Project", "Container", "Directory"
+        );
+        for (i, (project, name, path)) in containers.iter().enumerate() {
+            println!(
+                "{:<4}{:<20}{:<20}{}",
+                i + 1,
+                project,
+                name,
+                path.as_deref().unwrap_or("")
+            );
+        }
+        print!(
+            "Select a container to attach (number), or type 'cd <number>' to open its directory: "
+        );
+        io::stdout().flush().ok();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(());
+        }
+        if let Some(rest) = input.strip_prefix("cd ") {
+            match rest.parse::<usize>() {
+                Ok(num) if num >= 1 && num <= containers.len() => {
+                    if let Some(path) = &containers[num - 1].2 {
+                        Command::new("bash")
+                            .args(["-c", &format!("cd {} && exec bash", path)])
+                            .status()
+                            .ok();
+                    } else {
+                        println!("Path not available for selected container");
+                    }
+                }
+                _ => println!("Invalid selection"),
+            }
+            return Ok(());
+        }
+        match input.parse::<usize>() {
+            Ok(num) if num >= 1 && num <= containers.len() => {
+                if let Some(path) = &containers[num - 1].2 {
+                    env::set_current_dir(path)
+                        .with_context(|| format!("Failed to change directory to {}", path))?;
+                    let (_, name, _) = &containers[num - 1];
+                    resume_container(name, &cli.agent, skip_permission_flag.as_deref()).await?;
+                } else {
+                    println!("Path not available for selected container");
+                }
+            }
+            _ => println!("Invalid selection"),
         }
         return Ok(());
     }
@@ -86,7 +135,7 @@ async fn main() -> Result<()> {
             } else {
                 println!("\nCurrently running containers:");
                 println!("{:<20}{}", "Project", "Container");
-                for (project, name) in global {
+                for (project, name, _) in global {
                     println!("{:<20}{}", project, name);
                 }
             }

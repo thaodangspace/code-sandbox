@@ -49,7 +49,9 @@ pub struct Cli {
 pub enum Commands {
     #[command(about = "List containers for this directory and optionally attach to one")]
     Ls,
-    #[command(about = "List all running Code Sandbox containers")]
+    #[command(
+        about = "List all running Code Sandbox containers and optionally attach or open their directory"
+    )]
     Ps,
 }
 

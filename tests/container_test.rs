@@ -143,6 +143,12 @@ case "$cmd" in
     echo "csb-claude-proj-main-123456"
     echo "unrelated"
     ;;
+  inspect)
+    name="${!#}"
+    if [ "$name" = "csb-claude-proj-main-123456" ]; then
+      echo "/projects/proj"
+    fi
+    ;;
   *)
     exit 1
     ;;
@@ -167,4 +173,5 @@ esac
     assert_eq!(containers.len(), 1);
     assert_eq!(containers[0].0, "proj");
     assert_eq!(containers[0].1, "csb-claude-proj-main-123456");
+    assert_eq!(containers[0].2.as_deref(), Some("/projects/proj"));
 }

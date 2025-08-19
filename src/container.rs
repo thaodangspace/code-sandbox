@@ -221,6 +221,7 @@ pub async fn create_container(
     current_dir: &Path,
     additional_dir: Option<&Path>,
     agent: &Agent,
+    skip_permission_flag: Option<&str>,
 ) -> Result<()> {
     let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
     let dockerfile_content = create_dockerfile_content(&current_user);
@@ -338,10 +339,14 @@ pub async fn create_container(
         );
     }
 
-    attach_to_container(container_name, current_dir, agent).await
+    attach_to_container(container_name, current_dir, agent, skip_permission_flag).await
 }
 
-pub async fn resume_container(container_name: &str, agent: &Agent) -> Result<()> {
+pub async fn resume_container(
+    container_name: &str,
+    agent: &Agent,
+    skip_permission_flag: Option<&str>,
+) -> Result<()> {
     println!("Resuming container: {}", container_name);
 
     if !container_exists(container_name)? {
@@ -366,13 +371,14 @@ pub async fn resume_container(container_name: &str, agent: &Agent) -> Result<()>
     }
 
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    attach_to_container(container_name, &current_dir, agent).await
+    attach_to_container(container_name, &current_dir, agent, skip_permission_flag).await
 }
 
 async fn attach_to_container(
     container_name: &str,
     current_dir: &Path,
     agent: &Agent,
+    skip_permission_flag: Option<&str>,
 ) -> Result<()> {
     println!("Attaching to container and starting {}...", agent);
 
@@ -392,19 +398,23 @@ async fn attach_to_container(
         println!("Warning: Failed to create directory structure in container");
     }
 
+    let command = if let Some(flag) = skip_permission_flag {
+        format!(
+            "cd {} && source ~/.bashrc && exec {} {}",
+            current_dir.display(),
+            agent.command(),
+            flag
+        )
+    } else {
+        format!(
+            "cd {} && source ~/.bashrc && exec {}",
+            current_dir.display(),
+            agent.command()
+        )
+    };
+
     let attach_status = Command::new("docker")
-        .args(&[
-            "exec",
-            "-it",
-            container_name,
-            "/bin/bash",
-            "-c",
-            &format!(
-                "cd {} && source ~/.bashrc && exec {} --dangerously-skip-permissions",
-                current_dir.display(),
-                agent.command()
-            ),
-        ])
+        .args(&["exec", "-it", container_name, "/bin/bash", "-c", &command])
         .status()
         .context("Failed to attach to container")?;
 

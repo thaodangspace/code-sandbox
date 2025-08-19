@@ -31,6 +31,11 @@ async fn main() -> Result<()> {
 
     check_docker_availability()?;
     auto_remove_old_containers(settings.auto_remove_minutes.unwrap_or(60))?;
+    let skip_permission_flag = settings
+        .skip_permission_flags
+        .iter()
+        .find(|(agent, _)| agent.eq_ignore_ascii_case(cli.agent.command()))
+        .map(|(_, flag)| flag.to_string());
 
     if cli.cleanup {
         cleanup_containers(&current_dir)?;
@@ -45,7 +50,8 @@ async fn main() -> Result<()> {
     if cli.continue_ {
         match load_last_container()? {
             Some(container_name) => {
-                resume_container(&container_name, &cli.agent).await?;
+                resume_container(&container_name, &cli.agent, skip_permission_flag.as_deref())
+                    .await?;
                 return Ok(());
             }
             None => {
@@ -80,7 +86,7 @@ async fn main() -> Result<()> {
         match input.parse::<usize>() {
             Ok(num) if num >= 1 && num <= containers.len() => {
                 let selected = &containers[num - 1];
-                resume_container(selected, &cli.agent).await?;
+                resume_container(selected, &cli.agent, skip_permission_flag.as_deref()).await?;
             }
             _ => println!("Invalid selection"),
         }
@@ -91,7 +97,7 @@ async fn main() -> Result<()> {
         let containers = list_containers(&current_dir)?;
         if let Some(latest) = containers.first() {
             println!("Attaching to existing container for worktree: {}", latest);
-            resume_container(latest, &cli.agent).await?;
+            resume_container(latest, &cli.agent, skip_permission_flag.as_deref()).await?;
             return Ok(());
         }
     }
@@ -116,6 +122,7 @@ async fn main() -> Result<()> {
         &current_dir,
         additional_dir.as_deref(),
         &cli.agent,
+        skip_permission_flag.as_deref(),
     )
     .await?;
     save_last_container(&container_name)?;

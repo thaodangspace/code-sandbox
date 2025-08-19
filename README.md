@@ -140,6 +140,24 @@ The tool automatically detects and mounts your Claude configuration from:
 -   `~/.claude` (standard location)
 -   `$XDG_CONFIG_HOME/claude` (XDG standard)
 
+Additional behavior can be configured via `settings.json` located at
+`~/.config/codesandbox/settings.json`. Example:
+
+```json
+{
+  "auto_remove_minutes": 30,
+  "skip_permission_flags": {
+    "claude": "--dangerously-skip-permissions",
+    "gemini": "--yolo",
+    "qwen": "--yolo"
+  }
+}
+```
+
+The `skip_permission_flags` map assigns a permission-skipping flag to each
+agent. When launching an agent, the corresponding flag is appended to the
+command.
+
 ## Cleanup
 
 To remove all containers created from the current directory:

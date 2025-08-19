@@ -63,7 +63,7 @@ The codebase is structured into focused modules:
 ### Dependencies and External Tools
 
 -   **Docker**: Required for container operations - tool validates availability before proceeding
--   **Claude Code**: Automatically installed via npm in containers and launched with `--dangerously-skip-permissions` flag
+-   **Claude Code**: Automatically installed via npm in containers and can be launched with agent-specific permission-skipping flags (e.g., `--dangerously-skip-permissions`, `--yolo`) configured in `settings.json`
 -   **Development Tools**: Containers include Node.js v22, Go 1.24.5, Rust/Cargo, Python3, and build-essential
 
 ### Container Environment

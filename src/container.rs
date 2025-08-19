@@ -116,6 +116,37 @@ pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
     Ok(containers)
 }
 
+pub fn list_all_containers() -> Result<Vec<(String, String)>> {
+    let list_output = Command::new("docker")
+        .args(["ps", "--format", "{{.Names}}"])
+        .output()
+        .context("Failed to list Docker containers")?;
+
+    if !list_output.status.success() {
+        anyhow::bail!(
+            "Failed to list containers: {}",
+            String::from_utf8_lossy(&list_output.stderr)
+        );
+    }
+
+    let names = String::from_utf8_lossy(&list_output.stdout);
+    let containers = names
+        .lines()
+        .filter(|n| n.starts_with("csb-"))
+        .map(|name| (extract_project_name(name), name.to_string()))
+        .collect();
+    Ok(containers)
+}
+
+fn extract_project_name(name: &str) -> String {
+    let parts: Vec<&str> = name.split('-').collect();
+    if parts.len() >= 3 {
+        parts[2].to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
 pub fn auto_remove_old_containers(minutes: u64) -> Result<()> {
     if minutes == 0 {
         return Ok(());

@@ -13,7 +13,7 @@ use std::io::{self, Write};
 use cli::{Cli, Commands};
 use container::{
     auto_remove_old_containers, check_docker_availability, cleanup_containers, create_container,
-    generate_container_name, list_containers, resume_container,
+    generate_container_name, list_all_containers, list_containers, resume_container,
 };
 use settings::load_settings;
 use state::{clear_last_container, load_last_container, save_last_container};
@@ -60,6 +60,19 @@ async fn main() -> Result<()> {
         }
     }
 
+    if let Some(Commands::Ps) = cli.command {
+        let containers = list_all_containers()?;
+        if containers.is_empty() {
+            println!("No running Code Sandbox containers found.");
+            return Ok(());
+        }
+        println!("{:<20}{}", "Project", "Container");
+        for (project, name) in containers {
+            println!("{:<20}{}", project, name);
+        }
+        return Ok(());
+    }
+
     if let Some(Commands::Ls) = cli.command {
         let containers = list_containers(&current_dir)?;
         if containers.is_empty() {
@@ -67,6 +80,16 @@ async fn main() -> Result<()> {
                 "No Code Sandbox containers found for directory {}",
                 current_dir.display()
             );
+            let global = list_all_containers()?;
+            if global.is_empty() {
+                println!("No running Code Sandbox containers found.");
+            } else {
+                println!("\nCurrently running containers:");
+                println!("{:<20}{}", "Project", "Container");
+                for (project, name) in global {
+                    println!("{:<20}{}", project, name);
+                }
+            }
             return Ok(());
         }
 

@@ -29,6 +29,12 @@ fn parse_ls_subcommand() {
 }
 
 #[test]
+fn parse_ps_subcommand() {
+    let cli = Cli::parse_from(["codesandbox", "ps"]);
+    assert!(matches!(cli.command, Some(Commands::Ps)));
+}
+
+#[test]
 fn conflicting_flags_error() {
     let result = Cli::try_parse_from(["codesandbox", "--continue", "--cleanup"]);
     assert!(result.is_err());

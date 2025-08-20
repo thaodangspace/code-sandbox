@@ -53,7 +53,10 @@ export default function Terminal({ containerName }: TerminalProps) {
                 }
             }, 100);
 
-            const ws = new WebSocket(`ws://localhost:6789/terminal/${activeContainer}`);
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const ws = new WebSocket(
+                `${protocol}://${window.location.hostname}:6789/terminal/${activeContainer}`
+            );
             wsRef.current = ws;
 
             ws.onopen = () => {

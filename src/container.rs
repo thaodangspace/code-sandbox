@@ -3,9 +3,11 @@ use chrono::{Local, Utc};
 use std::env;
 use std::path::Path;
 use std::process::Command;
+use tempfile::NamedTempFile;
 
 use crate::cli::Agent;
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
+use crate::settings::load_settings;
 
 fn sanitize(name: &str) -> String {
     name.to_lowercase()
@@ -163,7 +165,7 @@ fn get_container_directory(name: &str) -> Result<Option<String>> {
         return Ok(None);
     }
     let paths = String::from_utf8_lossy(&output.stdout);
-    
+
     // Filter out config directories and get the first valid project path
     for line in paths.lines() {
         let path = line.trim();
@@ -319,6 +321,19 @@ pub async fn create_container(
         "-v",
         &format!("{}:{}", current_dir.display(), current_dir.display()),
     ]);
+
+    let settings = load_settings().unwrap_or_default();
+    let mut _env_file_overlays: Vec<NamedTempFile> = Vec::new();
+    for file in settings.env_files.iter() {
+        let target = current_dir.join(file);
+        if target.exists() {
+            let tmp =
+                NamedTempFile::new().context("Failed to create temp file for env masking")?;
+            docker_run.args(&["-v", &format!("{}:{}:ro", tmp.path().display(), target.display())]);
+            println!("Excluding {} from container mount", target.display());
+            _env_file_overlays.push(tmp);
+        }
+    }
 
     if let Some(dir) = additional_dir {
         docker_run.args(&["-v", &format!("{}:{}:ro", dir.display(), dir.display())]);

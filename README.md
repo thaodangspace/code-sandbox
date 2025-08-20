@@ -222,13 +222,21 @@ Additional behavior can be configured via `settings.json` located at
         "claude": "--dangerously-skip-permissions",
         "gemini": "--yolo",
         "qwen": "--yolo"
-    }
+    },
+    "env_files": [
+        ".env",
+        ".env.local"
+    ]
 }
 ```
 
 The `skip_permission_flags` map assigns a permission-skipping flag to each
 agent. When launching an agent, the corresponding flag is appended to the
 command.
+
+Environment files listed in `env_files` that exist in the project directory are
+masked from the container by overlaying them with empty temporary files,
+keeping sensitive data on the host.
 
 ## Cleanup
 

@@ -10,20 +10,36 @@ pub struct Settings {
     pub auto_remove_minutes: Option<u64>,
     #[serde(default)]
     pub skip_permission_flags: HashMap<String, String>,
+    #[serde(default = "default_env_files")]
+    pub env_files: Vec<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         let mut default_flags = HashMap::new();
-        default_flags.insert("claude".to_string(), "--dangerously-skip-permissions".to_string());
+        default_flags.insert(
+            "claude".to_string(),
+            "--dangerously-skip-permissions".to_string(),
+        );
         default_flags.insert("gemini".to_string(), "--yolo".to_string());
         default_flags.insert("qwen".to_string(), "--yolo".to_string());
-        
+
         Self {
             auto_remove_minutes: Some(60),
             skip_permission_flags: default_flags,
+            env_files: default_env_files(),
         }
     }
+}
+
+fn default_env_files() -> Vec<String> {
+    vec![
+        ".env".to_string(),
+        ".env.local".to_string(),
+        ".env.development.local".to_string(),
+        ".env.test.local".to_string(),
+        ".env.production.local".to_string(),
+    ]
 }
 
 fn settings_file_path() -> PathBuf {
@@ -59,9 +75,37 @@ mod tests {
 
         let settings = load_settings().unwrap();
         assert_eq!(settings.auto_remove_minutes, Some(60));
-        assert_eq!(settings.skip_permission_flags.get("claude").map(String::as_str), Some("--dangerously-skip-permissions"));
-        assert_eq!(settings.skip_permission_flags.get("gemini").map(String::as_str), Some("--yolo"));
-        assert_eq!(settings.skip_permission_flags.get("qwen").map(String::as_str), Some("--yolo"));
+        assert_eq!(
+            settings
+                .skip_permission_flags
+                .get("claude")
+                .map(String::as_str),
+            Some("--dangerously-skip-permissions")
+        );
+        assert_eq!(
+            settings
+                .skip_permission_flags
+                .get("gemini")
+                .map(String::as_str),
+            Some("--yolo")
+        );
+        assert_eq!(
+            settings
+                .skip_permission_flags
+                .get("qwen")
+                .map(String::as_str),
+            Some("--yolo")
+        );
+        assert_eq!(
+            settings.env_files,
+            vec![
+                ".env",
+                ".env.local",
+                ".env.development.local",
+                ".env.test.local",
+                ".env.production.local",
+            ]
+        );
 
         if let Some(val) = original {
             env::set_var("CODESANDBOX_CONFIG_HOME", val);
@@ -77,7 +121,7 @@ mod tests {
         fs::create_dir_all(&config_dir).unwrap();
         fs::write(
             config_dir.join("settings.json"),
-            r#"{ "auto_remove_minutes": 30, "skip_permission_flags": { "claude": "--dangerously-skip-permissions" } }"#,
+            r#"{ "auto_remove_minutes": 30, "skip_permission_flags": { "claude": "--dangerously-skip-permissions" }, "env_files": [".custom.env"] }"#,
         )
         .unwrap();
 
@@ -93,6 +137,7 @@ mod tests {
                 .map(String::as_str),
             Some("--dangerously-skip-permissions")
         );
+        assert_eq!(settings.env_files, vec![".custom.env".to_string()]);
 
         if let Some(val) = original {
             env::set_var("CODESANDBOX_CONFIG_HOME", val);

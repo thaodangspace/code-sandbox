@@ -545,6 +545,9 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN npm install -g @google/gemini-cli
 RUN npm install -g @openai/codex 
 RUN npm install -g @qwen-code/qwen-code@latest
+
+# Install Cursor CLI
+RUN curl https://cursor.com/install -fsS | bash
 # Switch to user
 USER {user}
 WORKDIR /home/{user}

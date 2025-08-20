@@ -70,7 +70,17 @@ Running an agent inside an isolated container provides several benefits:
 
 ## Installation
 
-### Method 1: Build from Source (Recommended)
+### Method 1: Install via Homebrew (macOS/Linux - Recommended)
+
+```bash
+# Add the tap (replace with actual repository URL)
+brew tap your-username/codesandbox
+
+# Install codesandbox
+brew install codesandbox
+```
+
+### Method 2: Build from Source
 
 ```bash
 # Clone the repository
@@ -84,7 +94,7 @@ cargo build --release
 sudo cp target/release/codesandbox /usr/local/bin/
 ```
 
-### Method 2: Install via Cargo
+### Method 3: Install via Cargo
 
 ```bash
 # Install directly from the local repository
@@ -94,7 +104,7 @@ cargo install --path .
 cargo install codesandbox
 ```
 
-### Method 3: Download Pre-built Binaries
+### Method 4: Download Pre-built Binaries
 
 Visit the [Releases](https://github.com/your-org/code-sandbox/releases) page to download pre-built binaries for your platform.
 

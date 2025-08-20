@@ -4,6 +4,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "codesandbox")]
 #[command(about = "Code Sandbox - Docker container manager")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 pub struct Cli {
     #[arg(
         long,
@@ -37,7 +38,7 @@ pub struct Cli {
         long,
         value_enum,
         default_value_t = Agent::Claude,
-        help = "Agent to start in the container (claude, gemini, codex, qwen)",
+        help = "Agent to start in the container (claude, gemini, codex, qwen, cursor)",
     )]
     pub agent: Agent,
 
@@ -70,6 +71,7 @@ pub enum Agent {
     Gemini,
     Codex,
     Qwen,
+    Cursor,
 }
 
 impl Agent {
@@ -79,6 +81,7 @@ impl Agent {
             Agent::Gemini => "gemini",
             Agent::Codex => "codex",
             Agent::Qwen => "qwen",
+            Agent::Cursor => "cursor",
         }
     }
 }
@@ -90,6 +93,7 @@ impl std::fmt::Display for Agent {
             Agent::Gemini => "Gemini",
             Agent::Codex => "Codex",
             Agent::Qwen => "Qwen",
+            Agent::Cursor => "Cursor",
         };
         write!(f, "{}", name)
     }

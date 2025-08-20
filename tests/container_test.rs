@@ -4,6 +4,9 @@ mod config;
 #[path = "../src/cli.rs"]
 mod cli;
 
+#[path = "../src/settings.rs"]
+mod settings;
+
 #[path = "../src/container.rs"]
 mod container;
 

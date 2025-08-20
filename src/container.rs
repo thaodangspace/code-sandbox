@@ -326,13 +326,13 @@ pub async fn create_container(
     let mut _env_file_overlays: Vec<NamedTempFile> = Vec::new();
     for file in settings.env_files.iter() {
         let target = current_dir.join(file);
-        let tmp = NamedTempFile::new().context("Failed to create temp file for env masking")?;
-        docker_run.args(&[
-            "-v",
-            &format!("{}:{}:ro", tmp.path().display(), target.display()),
-        ]);
-        println!("Excluding {} from container mount", target.display());
-        _env_file_overlays.push(tmp);
+        if target.exists() {
+            let tmp =
+                NamedTempFile::new().context("Failed to create temp file for env masking")?;
+            docker_run.args(&["-v", &format!("{}:{}:ro", tmp.path().display(), target.display())]);
+            println!("Excluding {} from container mount", target.display());
+            _env_file_overlays.push(tmp);
+        }
     }
 
     if let Some(dir) = additional_dir {

@@ -178,3 +178,57 @@ esac
     assert_eq!(containers[0].1, "csb-claude-proj-main-123456");
     assert_eq!(containers[0].2.as_deref(), Some("/projects/proj"));
 }
+
+#[tokio::test]
+async fn create_container_masks_only_existing_env_files() {
+    let _lock = DOCKER_LOCK.lock().unwrap();
+    let tmp = tempdir().expect("temp dir");
+    let project_dir = tmp.path().join("proj");
+    fs::create_dir(&project_dir).expect("create project dir");
+    fs::write(project_dir.join(".env"), "SECRET=1").expect("write env");
+
+    let bin_dir = tmp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let run_log = tmp.path().join("run.log");
+    let script = format!(
+        "#!/bin/bash\ncmd=\"$1\"; shift\ncase \"$cmd\" in\n  build) exit 0 ;;\n  run) echo \"$@\" > \"{}\"; exit 0 ;;\n  exec) exit 0 ;;\n  *) exit 0 ;;\nesac\n",
+        run_log.display()
+    );
+    let docker_path = bin_dir.join("docker");
+    fs::write(&docker_path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&docker_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&docker_path, perms).unwrap();
+    }
+
+    let original_path = env::var("PATH").unwrap_or_default();
+    env::set_var("PATH", format!("{}:{}", bin_dir.display(), original_path));
+
+    container::create_container("test", &project_dir, None, &Agent::Claude, None)
+        .await
+        .unwrap();
+
+    env::set_var("PATH", original_path);
+
+    let run_args = fs::read_to_string(&run_log).unwrap();
+    assert!(run_args.contains(&project_dir.join(".env").display().to_string()));
+    assert!(!run_args.contains(&project_dir.join(".env.local").display().to_string()));
+    assert!(!run_args.contains(
+        &project_dir
+            .join(".env.development.local")
+            .display()
+            .to_string()
+    ));
+    assert!(!run_args.contains(
+        &project_dir.join(".env.test.local").display().to_string()
+    ));
+    assert!(!run_args.contains(
+        &project_dir
+            .join(".env.production.local")
+            .display()
+            .to_string()
+    ));
+}

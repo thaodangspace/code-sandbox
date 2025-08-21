@@ -7,6 +7,7 @@ use tempfile::NamedTempFile;
 
 use crate::cli::Agent;
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
+use crate::language::{detect_project_languages, ensure_language_tools};
 use crate::settings::load_settings;
 
 fn sanitize(name: &str) -> String {
@@ -327,9 +328,11 @@ pub async fn create_container(
     for file in settings.env_files.iter() {
         let target = current_dir.join(file);
         if target.exists() {
-            let tmp =
-                NamedTempFile::new().context("Failed to create temp file for env masking")?;
-            docker_run.args(&["-v", &format!("{}:{}:ro", tmp.path().display(), target.display())]);
+            let tmp = NamedTempFile::new().context("Failed to create temp file for env masking")?;
+            docker_run.args(&[
+                "-v",
+                &format!("{}:{}:ro", tmp.path().display(), target.display()),
+            ]);
             println!("Excluding {} from container mount", target.display());
             _env_file_overlays.push(tmp);
         }
@@ -411,6 +414,8 @@ pub async fn create_container(
             String::from_utf8_lossy(&run_output.stderr)
         );
     }
+    let languages = detect_project_languages(current_dir);
+    ensure_language_tools(container_name, &languages)?;
 
     attach_to_container(container_name, current_dir, agent, skip_permission_flag).await
 }

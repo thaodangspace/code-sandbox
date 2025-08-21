@@ -7,6 +7,9 @@ mod cli;
 #[path = "../src/settings.rs"]
 mod settings;
 
+#[path = "../src/language.rs"]
+mod language;
+
 #[path = "../src/container.rs"]
 mod container;
 
@@ -30,6 +33,16 @@ fn test_generate_container_name_with_git_repo() {
         .current_dir(&repo_path)
         .status()
         .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .status()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .status()
+        .expect("git config name");
     Command::new("git")
         .args(["checkout", "-b", "Feature/Test"])
         .current_dir(&repo_path)
@@ -222,9 +235,7 @@ async fn create_container_masks_only_existing_env_files() {
             .display()
             .to_string()
     ));
-    assert!(!run_args.contains(
-        &project_dir.join(".env.test.local").display().to_string()
-    ));
+    assert!(!run_args.contains(&project_dir.join(".env.test.local").display().to_string()));
     assert!(!run_args.contains(
         &project_dir
             .join(".env.production.local")

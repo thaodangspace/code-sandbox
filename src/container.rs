@@ -277,6 +277,39 @@ pub fn container_exists(container_name: &str) -> Result<bool> {
     Ok(output.status.success())
 }
 
+fn mount_agent_config(
+    docker_run: &mut Command,
+    agent_names: &[&str],
+    current_dir: &Path,
+    current_user: &str,
+) {
+    let home_dir = home::home_dir().unwrap_or_default();
+
+    for agent in agent_names {
+        let paths = [
+            current_dir.join(format!(".{agent}")),
+            home_dir.join(format!(".{agent}")),
+            home_dir.join(".config").join(agent),
+        ];
+
+        for (i, host_path) in paths.iter().enumerate() {
+            if host_path.exists() {
+                let container_path = match i {
+                    0 | 1 => format!("/home/{current_user}/.{agent}"),
+                    _ => format!("/home/{current_user}/.config/{agent}"),
+                };
+                docker_run.args(&["-v", &format!("{}:{}", host_path.display(), container_path)]);
+                println!(
+                    "Mounting {agent} config from: {} -> {}",
+                    host_path.display(),
+                    container_path
+                );
+                break;
+            }
+        }
+    }
+}
+
 pub async fn create_container(
     container_name: &str,
     current_dir: &Path,
@@ -400,6 +433,19 @@ pub async fn create_container(
             );
             break; // Only mount the first one found
         }
+    }
+
+    match agent {
+        Agent::Gemini => {
+            mount_agent_config(&mut docker_run, &["gemini"], current_dir, &current_user);
+        }
+        Agent::Qwen => {
+            mount_agent_config(&mut docker_run, &["qwen"], current_dir, &current_user);
+        }
+        Agent::Cursor => {
+            mount_agent_config(&mut docker_run, &["cursor"], current_dir, &current_user);
+        }
+        _ => {}
     }
 
     docker_run.args(&["codesandbox-image", "/bin/bash"]);

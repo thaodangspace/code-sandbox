@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod container;
+mod language;
 mod server;
 mod settings;
 mod state;

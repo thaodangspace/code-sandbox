@@ -7,6 +7,9 @@ mod cli;
 #[path = "../src/settings.rs"]
 mod settings;
 
+#[path = "../src/language.rs"]
+mod language;
+
 #[path = "../src/container.rs"]
 mod container;
 

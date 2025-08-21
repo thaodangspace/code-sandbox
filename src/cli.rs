@@ -81,7 +81,7 @@ impl Agent {
             Agent::Gemini => "gemini",
             Agent::Codex => "codex",
             Agent::Qwen => "qwen",
-            Agent::Cursor => "cursor",
+            Agent::Cursor => "cursor-agent",
         }
     }
 }

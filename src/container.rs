@@ -463,12 +463,20 @@ pub async fn create_container(
     let languages = detect_project_languages(current_dir);
     ensure_language_tools(container_name, &languages)?;
 
-    attach_to_container(container_name, current_dir, agent, skip_permission_flag).await
+    attach_to_container(
+        container_name,
+        current_dir,
+        agent,
+        false,
+        skip_permission_flag,
+    )
+    .await
 }
 
 pub async fn resume_container(
     container_name: &str,
     agent: &Agent,
+    agent_continue: bool,
     skip_permission_flag: Option<&str>,
 ) -> Result<()> {
     println!("Resuming container: {}", container_name);
@@ -495,13 +503,45 @@ pub async fn resume_container(
     }
 
     let current_dir = env::current_dir().context("Failed to get current directory")?;
-    attach_to_container(container_name, &current_dir, agent, skip_permission_flag).await
+    attach_to_container(
+        container_name,
+        &current_dir,
+        agent,
+        agent_continue,
+        skip_permission_flag,
+    )
+    .await
+}
+
+fn build_agent_command(
+    current_dir: &Path,
+    agent: &Agent,
+    agent_continue: bool,
+    skip_permission_flag: Option<&str>,
+) -> String {
+    let mut command = format!(
+        "cd {} && source ~/.bashrc && exec {}",
+        current_dir.display(),
+        agent.command()
+    );
+
+    if agent_continue {
+        command.push_str(" --continue");
+    }
+
+    if let Some(flag) = skip_permission_flag {
+        command.push(' ');
+        command.push_str(flag);
+    }
+
+    command
 }
 
 async fn attach_to_container(
     container_name: &str,
     current_dir: &Path,
     agent: &Agent,
+    agent_continue: bool,
     skip_permission_flag: Option<&str>,
 ) -> Result<()> {
     println!("Attaching to container and starting {}...", agent);
@@ -522,20 +562,7 @@ async fn attach_to_container(
         println!("Warning: Failed to create directory structure in container");
     }
 
-    let command = if let Some(flag) = skip_permission_flag {
-        format!(
-            "cd {} && source ~/.bashrc && exec {} {}",
-            current_dir.display(),
-            agent.command(),
-            flag
-        )
-    } else {
-        format!(
-            "cd {} && source ~/.bashrc && exec {}",
-            current_dir.display(),
-            agent.command()
-        )
-    };
+    let command = build_agent_command(current_dir, agent, agent_continue, skip_permission_flag);
 
     let attach_status = Command::new("docker")
         .args(&["exec", "-it", container_name, "/bin/bash", "-c", &command])
@@ -621,4 +648,22 @@ CMD ["/bin/bash"]
 "#,
         user = user
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn build_command_includes_continue() {
+        let cmd = build_agent_command(Path::new("/project"), &Agent::Claude, true, None);
+        assert!(cmd.contains("claude --continue"));
+    }
+
+    #[test]
+    fn build_command_without_continue() {
+        let cmd = build_agent_command(Path::new("/project"), &Agent::Claude, false, None);
+        assert!(!cmd.contains("--continue"));
+    }
 }

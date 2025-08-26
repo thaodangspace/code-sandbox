@@ -316,6 +316,7 @@ pub async fn create_container(
     additional_dir: Option<&Path>,
     agent: &Agent,
     skip_permission_flag: Option<&str>,
+    shell: bool,
 ) -> Result<()> {
     let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
     let dockerfile_content = create_dockerfile_content(&current_user);
@@ -469,6 +470,7 @@ pub async fn create_container(
         agent,
         false,
         skip_permission_flag,
+        shell,
     )
     .await
 }
@@ -478,6 +480,7 @@ pub async fn resume_container(
     agent: &Agent,
     agent_continue: bool,
     skip_permission_flag: Option<&str>,
+    shell: bool,
 ) -> Result<()> {
     println!("Resuming container: {}", container_name);
 
@@ -509,6 +512,7 @@ pub async fn resume_container(
         agent,
         agent_continue,
         skip_permission_flag,
+        shell,
     )
     .await
 }
@@ -543,8 +547,13 @@ async fn attach_to_container(
     agent: &Agent,
     agent_continue: bool,
     skip_permission_flag: Option<&str>,
+    shell: bool,
 ) -> Result<()> {
-    println!("Attaching to container and starting {}...", agent);
+    if shell {
+        println!("Attaching to container shell...");
+    } else {
+        println!("Attaching to container and starting {}...", agent);
+    }
 
     // Ensure the directory structure exists in the container
     let mkdir_status = Command::new("docker")
@@ -560,6 +569,24 @@ async fn attach_to_container(
 
     if !mkdir_status.success() {
         println!("Warning: Failed to create directory structure in container");
+    }
+
+    if shell {
+        let command = format!(
+            "cd {} && source ~/.bashrc && exec /bin/bash",
+            current_dir.display()
+        );
+        let attach_status = Command::new("docker")
+            .args(&["exec", "-it", container_name, "/bin/bash", "-c", &command])
+            .status()
+            .context("Failed to attach to container")?;
+        if !attach_status.success() {
+            println!(
+                "You can manually attach with: docker exec -it {} /bin/bash",
+                container_name
+            );
+        }
+        return Ok(());
     }
 
     let command = build_agent_command(current_dir, agent, agent_continue, skip_permission_flag);

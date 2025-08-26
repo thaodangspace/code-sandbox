@@ -220,7 +220,7 @@ async fn create_container_masks_only_existing_env_files() {
     let original_path = env::var("PATH").unwrap_or_default();
     env::set_var("PATH", format!("{}:{}", bin_dir.display(), original_path));
 
-    container::create_container("test", &project_dir, None, &Agent::Claude, None)
+    container::create_container("test", &project_dir, None, &Agent::Claude, None, false)
         .await
         .unwrap();
 

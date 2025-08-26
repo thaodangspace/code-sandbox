@@ -246,6 +246,14 @@ Environment files listed in `env_files` that exist in the project directory are
 masked from the container by overlaying them with empty temporary files,
 keeping sensitive data on the host.
 
+## Shell Access
+
+To start a container without launching an agent and open a shell:
+
+```bash
+codesandbox --shell
+```
+
 ## Cleanup
 
 To remove all containers created from the current directory:

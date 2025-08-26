@@ -10,7 +10,7 @@ mod settings;
 #[path = "../src/language.rs"]
 mod language;
 
-#[path = "../src/container.rs"]
+#[path = "../src/container/mod.rs"]
 mod container;
 
 use cli::Agent;

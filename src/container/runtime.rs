@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use chrono::{Local, Utc};
 use std::env;
 use std::path::Path;
 use std::process::Command;
@@ -10,272 +9,7 @@ use crate::config::{get_claude_config_dir, get_claude_json_paths};
 use crate::language::{detect_project_languages, ensure_language_tools, ProjectLanguage};
 use crate::settings::load_settings;
 
-fn sanitize(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect()
-}
-
-pub fn generate_container_name(current_dir: &Path, agent: &Agent) -> String {
-    let dir_name = current_dir
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(sanitize)
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let agent_name = sanitize(agent.command());
-
-    let branch_output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(current_dir)
-        .output();
-    let branch_name = branch_output
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| sanitize(String::from_utf8_lossy(&o.stdout).trim()))
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let timestamp = Local::now().format("%y%m%d%H%M").to_string();
-
-    format!("csb-{agent_name}-{dir_name}-{branch_name}-{timestamp}")
-}
-
-pub fn cleanup_containers(current_dir: &Path) -> Result<()> {
-    let dir_name = current_dir
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(sanitize)
-        .unwrap_or_else(|| "unknown".to_string());
-    let dir_marker = format!("-{dir_name}-");
-
-    let list_output = Command::new("docker")
-        .args(["ps", "-a", "--format", "{{.Names}}"])
-        .output()
-        .context("Failed to list Docker containers")?;
-
-    if !list_output.status.success() {
-        anyhow::bail!(
-            "Failed to list containers: {}",
-            String::from_utf8_lossy(&list_output.stderr)
-        );
-    }
-
-    let names = String::from_utf8_lossy(&list_output.stdout);
-    for name in names
-        .lines()
-        .filter(|n| n.starts_with("csb-") && n.contains(&dir_marker))
-    {
-        println!("Removing container {name}");
-        let rm_output = Command::new("docker")
-            .args(["rm", "-f", name])
-            .output()
-            .context("Failed to remove container")?;
-
-        if !rm_output.status.success() {
-            anyhow::bail!(
-                "Failed to remove container {}: {}",
-                name,
-                String::from_utf8_lossy(&rm_output.stderr)
-            );
-        }
-    }
-
-    Ok(())
-}
-
-pub fn list_containers(current_dir: &Path) -> Result<Vec<String>> {
-    let dir_name = current_dir
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(sanitize)
-        .unwrap_or_else(|| "unknown".to_string());
-    let dir_marker = format!("-{dir_name}-");
-
-    let list_output = Command::new("docker")
-        .args(["ps", "-a", "--format", "{{.Names}}"])
-        .output()
-        .context("Failed to list Docker containers")?;
-
-    if !list_output.status.success() {
-        anyhow::bail!(
-            "Failed to list containers: {}",
-            String::from_utf8_lossy(&list_output.stderr)
-        );
-    }
-
-    let names = String::from_utf8_lossy(&list_output.stdout);
-    let containers = names
-        .lines()
-        .filter(|n| n.starts_with("csb-") && n.contains(&dir_marker))
-        .map(|s| s.to_string())
-        .collect();
-    Ok(containers)
-}
-
-pub fn list_all_containers() -> Result<Vec<(String, String, Option<String>)>> {
-    let list_output = Command::new("docker")
-        .args(["ps", "--format", "{{.Names}}"])
-        .output()
-        .context("Failed to list Docker containers")?;
-
-    if !list_output.status.success() {
-        anyhow::bail!(
-            "Failed to list containers: {}",
-            String::from_utf8_lossy(&list_output.stderr)
-        );
-    }
-
-    let names = String::from_utf8_lossy(&list_output.stdout);
-    let mut containers = Vec::new();
-    for name in names.lines().filter(|n| n.starts_with("csb-")) {
-        let project = extract_project_name(name);
-        let path = get_container_directory(name).ok().flatten();
-        containers.push((project, name.to_string(), path));
-    }
-    Ok(containers)
-}
-
-fn extract_project_name(name: &str) -> String {
-    let parts: Vec<&str> = name.split('-').collect();
-    if parts.len() >= 3 {
-        parts[2].to_string()
-    } else {
-        "unknown".to_string()
-    }
-}
-
-fn get_container_directory(name: &str) -> Result<Option<String>> {
-    // First try to get the main project mount (where source equals destination and is read-write)
-    let output = Command::new("docker")
-        .args([
-            "inspect",
-            "-f",
-            "{{range .Mounts}}{{if and .RW (eq .Source .Destination)}}{{.Source}}{{\"\\n\"}}{{end}}{{end}}",
-            name,
-        ])
-        .output()
-        .context("Failed to inspect container")?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    let paths = String::from_utf8_lossy(&output.stdout);
-
-    // Filter out config directories and get the first valid project path
-    for line in paths.lines() {
-        let path = line.trim();
-        if !path.is_empty() && !path.contains("/.claude") && !path.contains("/.serena") {
-            return Ok(Some(path.to_string()));
-        }
-    }
-    Ok(None)
-}
-
-pub fn auto_remove_old_containers(minutes: u64) -> Result<()> {
-    if minutes == 0 {
-        return Ok(());
-    }
-
-    let cutoff = Utc::now() - chrono::Duration::minutes(minutes as i64);
-
-    let list_output = Command::new("docker")
-        .args(["ps", "-a", "--format", "{{.Names}}"])
-        .output()
-        .context("Failed to list Docker containers")?;
-
-    if !list_output.status.success() {
-        anyhow::bail!(
-            "Failed to list containers: {}",
-            String::from_utf8_lossy(&list_output.stderr)
-        );
-    }
-
-    let names = String::from_utf8_lossy(&list_output.stdout);
-    for name in names.lines().filter(|n| n.starts_with("csb-")) {
-        let inspect_output = Command::new("docker")
-            .args(["inspect", "-f", "{{.Created}}", name])
-            .output()
-            .context("Failed to inspect container")?;
-        if !inspect_output.status.success() {
-            continue;
-        }
-        let created_str = String::from_utf8_lossy(&inspect_output.stdout)
-            .trim()
-            .to_string();
-        let created = match chrono::DateTime::parse_from_rfc3339(&created_str) {
-            Ok(c) => c.with_timezone(&Utc),
-            Err(_) => continue,
-        };
-        if created > cutoff {
-            continue;
-        }
-
-        let logs_output = Command::new("docker")
-            .args(["logs", name])
-            .output()
-            .context("Failed to check container logs")?;
-        if !logs_output.status.success() {
-            continue;
-        }
-        if logs_output.stdout.is_empty() && logs_output.stderr.is_empty() {
-            println!("Auto removing unused container {name}");
-            let rm_output = Command::new("docker")
-                .args(["rm", "-f", name])
-                .output()
-                .context("Failed to remove container")?;
-            if !rm_output.status.success() {
-                anyhow::bail!(
-                    "Failed to remove container {}: {}",
-                    name,
-                    String::from_utf8_lossy(&rm_output.stderr)
-                );
-            }
-        }
-    }
-    Ok(())
-}
-
-pub fn check_docker_availability() -> Result<()> {
-    let output = Command::new("docker").arg("--version").output().context(
-        "Failed to check Docker availability. Make sure Docker is installed and running.",
-    )?;
-
-    if !output.status.success() {
-        anyhow::bail!("Docker is not available or not running");
-    }
-
-    Ok(())
-}
-
-pub fn is_container_running(container_name: &str) -> Result<bool> {
-    let output = Command::new("docker")
-        .args(&["inspect", "-f", "{{.State.Running}}", container_name])
-        .output()
-        .context("Failed to check container status")?;
-
-    if !output.status.success() {
-        return Ok(false);
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let status = output_str.trim();
-    Ok(status == "true")
-}
-
-pub fn container_exists(container_name: &str) -> Result<bool> {
-    let output = Command::new("docker")
-        .args(&["inspect", container_name])
-        .output()
-        .context("Failed to check if container exists")?;
-
-    Ok(output.status.success())
-}
+use super::manage::{container_exists, is_container_running};
 
 fn mount_agent_config(
     docker_run: &mut Command,
@@ -298,7 +32,7 @@ fn mount_agent_config(
                     0 | 1 => format!("/home/{current_user}/.{agent}"),
                     _ => format!("/home/{current_user}/.config/{agent}"),
                 };
-                docker_run.args(&["-v", &format!("{}:{}", host_path.display(), container_path)]);
+                docker_run.args(["-v", &format!("{}:{}", host_path.display(), container_path)]);
                 println!(
                     "Mounting {agent} config from: {} -> {}",
                     host_path.display(),
@@ -322,7 +56,7 @@ fn mount_language_configs(
             let host_path = home_dir.join(config_path);
             if host_path.exists() {
                 let container_path = format!("/home/{current_user}/{config_path}");
-                docker_run.args(&["-v", &format!("{}:{}", host_path.display(), container_path)]);
+                docker_run.args(["-v", &format!("{}:{}", host_path.display(), container_path)]);
                 println!(
                     "Mounting {} config from: {} -> {}",
                     language.name(),
@@ -334,24 +68,15 @@ fn mount_language_configs(
     }
 }
 
-pub async fn create_container(
-    container_name: &str,
-    current_dir: &Path,
-    additional_dir: Option<&Path>,
-    agent: &Agent,
-    skip_permission_flag: Option<&str>,
-    shell: bool,
-) -> Result<()> {
-    let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
-    let dockerfile_content = create_dockerfile_content(&current_user);
-
+fn build_docker_image(current_user: &str) -> Result<()> {
+    let dockerfile_content = create_dockerfile_content(current_user);
     let temp_dir = std::env::temp_dir();
     let dockerfile_path = temp_dir.join("Dockerfile.codesandbox");
     std::fs::write(&dockerfile_path, dockerfile_content).context("Failed to write Dockerfile")?;
 
     println!("Building Docker image...");
     let build_output = Command::new("docker")
-        .args(&[
+        .args([
             "build",
             "-t",
             "codesandbox-image",
@@ -370,8 +95,19 @@ pub async fn create_container(
         );
     }
 
+    Ok(())
+}
+
+fn build_run_command(
+    container_name: &str,
+    current_dir: &Path,
+    additional_dir: Option<&Path>,
+    agent: &Agent,
+    current_user: &str,
+    languages: &[ProjectLanguage],
+) -> Result<(Command, Vec<NamedTempFile>)> {
     let mut docker_run = Command::new("docker");
-    docker_run.args(&[
+    docker_run.args([
         "run",
         "-d",
         "-it",
@@ -382,28 +118,28 @@ pub async fn create_container(
     ]);
 
     let settings = load_settings().unwrap_or_default();
-    let mut _env_file_overlays: Vec<NamedTempFile> = Vec::new();
+    let mut env_file_overlays: Vec<NamedTempFile> = Vec::new();
     for file in settings.env_files.iter() {
         let target = current_dir.join(file);
         if target.exists() {
             let tmp = NamedTempFile::new().context("Failed to create temp file for env masking")?;
-            docker_run.args(&[
+            docker_run.args([
                 "-v",
                 &format!("{}:{}:ro", tmp.path().display(), target.display()),
             ]);
             println!("Excluding {} from container mount", target.display());
-            _env_file_overlays.push(tmp);
+            env_file_overlays.push(tmp);
         }
     }
 
     if let Some(dir) = additional_dir {
-        docker_run.args(&["-v", &format!("{}:{}:ro", dir.display(), dir.display())]);
+        docker_run.args(["-v", &format!("{}:{}:ro", dir.display(), dir.display())]);
         println!("Mounting additional directory read-only: {}", dir.display());
     }
 
     if let Some(claude_config_dir) = get_claude_config_dir() {
         if claude_config_dir.exists() {
-            docker_run.args(&[
+            docker_run.args([
                 "-v",
                 &format!(
                     "{}:/home/{}/.claude",
@@ -426,7 +162,7 @@ pub async fn create_container(
             } else {
                 format!("/home/{}/.claude/config_{}.json", current_user, i)
             };
-            docker_run.args(&[
+            docker_run.args([
                 "-v",
                 &format!("{}:{}", config_path.display(), container_path),
             ]);
@@ -438,16 +174,14 @@ pub async fn create_container(
         }
     }
 
-    // Mount .serena directory if it exists in current directory or home directory
     let serena_paths = [
         current_dir.join(".serena"),
         home::home_dir().unwrap_or_default().join(".serena"),
     ];
-
     for serena_path in serena_paths.iter() {
         if serena_path.exists() {
             let container_serena_path = format!("/home/{}/.serena", current_user);
-            docker_run.args(&[
+            docker_run.args([
                 "-v",
                 &format!("{}:{}", serena_path.display(), container_serena_path),
             ]);
@@ -456,36 +190,58 @@ pub async fn create_container(
                 serena_path.display(),
                 container_serena_path
             );
-            break; // Only mount the first one found
+            break;
         }
     }
 
     match agent {
         Agent::Gemini => {
-            mount_agent_config(&mut docker_run, &["gemini"], current_dir, &current_user);
+            mount_agent_config(&mut docker_run, &["gemini"], current_dir, current_user);
         }
         Agent::Qwen => {
-            mount_agent_config(&mut docker_run, &["qwen"], current_dir, &current_user);
+            mount_agent_config(&mut docker_run, &["qwen"], current_dir, current_user);
         }
         Agent::Cursor => {
-            mount_agent_config(&mut docker_run, &["cursor"], current_dir, &current_user);
+            mount_agent_config(&mut docker_run, &["cursor"], current_dir, current_user);
         }
         _ => {}
     }
 
-    // Mount language-specific global configs based on detected languages
-    let languages = detect_project_languages(current_dir);
     if !languages.is_empty() {
-        println!("Detected languages: {:?}", languages.iter().map(|l| l.name()).collect::<Vec<_>>());
-        mount_language_configs(&mut docker_run, &languages, &current_user);
+        println!(
+            "Detected languages: {:?}",
+            languages.iter().map(|l| l.name()).collect::<Vec<_>>()
+        );
+        mount_language_configs(&mut docker_run, languages, current_user);
     }
 
-    docker_run.args(&["codesandbox-image", "/bin/bash"]);
+    docker_run.args(["codesandbox-image", "/bin/bash"]);
 
+    Ok((docker_run, env_file_overlays))
+}
+
+pub async fn create_container(
+    container_name: &str,
+    current_dir: &Path,
+    additional_dir: Option<&Path>,
+    agent: &Agent,
+    skip_permission_flag: Option<&str>,
+    shell: bool,
+) -> Result<()> {
+    let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
+    build_docker_image(&current_user)?;
+    let languages = detect_project_languages(current_dir);
+    let (mut docker_run, _env_file_overlays) = build_run_command(
+        container_name,
+        current_dir,
+        additional_dir,
+        agent,
+        &current_user,
+        &languages,
+    )?;
     let run_output = docker_run
         .output()
         .context("Failed to run Docker container")?;
-
     if !run_output.status.success() {
         anyhow::bail!(
             "Failed to create container: {}",
@@ -493,7 +249,6 @@ pub async fn create_container(
         );
     }
     ensure_language_tools(container_name, &languages)?;
-
     attach_to_container(
         container_name,
         current_dir,
@@ -678,7 +433,7 @@ USER root
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code
 RUN npm install -g @google/gemini-cli
-RUN npm install -g @openai/codex 
+RUN npm install -g @openai/codex
 RUN npm install -g @qwen-code/qwen-code@latest
 
 # Install Cursor CLI

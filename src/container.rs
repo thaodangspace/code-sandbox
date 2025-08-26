@@ -7,7 +7,7 @@ use tempfile::NamedTempFile;
 
 use crate::cli::Agent;
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
-use crate::language::{detect_project_languages, ensure_language_tools};
+use crate::language::{detect_project_languages, ensure_language_tools, ProjectLanguage};
 use crate::settings::load_settings;
 
 fn sanitize(name: &str) -> String {
@@ -310,6 +310,30 @@ fn mount_agent_config(
     }
 }
 
+fn mount_language_configs(
+    docker_run: &mut Command,
+    languages: &[ProjectLanguage],
+    current_user: &str,
+) {
+    let home_dir = home::home_dir().unwrap_or_default();
+
+    for language in languages {
+        for config_path in language.global_config_paths() {
+            let host_path = home_dir.join(config_path);
+            if host_path.exists() {
+                let container_path = format!("/home/{current_user}/{config_path}");
+                docker_run.args(&["-v", &format!("{}:{}", host_path.display(), container_path)]);
+                println!(
+                    "Mounting {} config from: {} -> {}",
+                    language.name(),
+                    host_path.display(),
+                    container_path
+                );
+            }
+        }
+    }
+}
+
 pub async fn create_container(
     container_name: &str,
     current_dir: &Path,
@@ -449,6 +473,13 @@ pub async fn create_container(
         _ => {}
     }
 
+    // Mount language-specific global configs based on detected languages
+    let languages = detect_project_languages(current_dir);
+    if !languages.is_empty() {
+        println!("Detected languages: {:?}", languages.iter().map(|l| l.name()).collect::<Vec<_>>());
+        mount_language_configs(&mut docker_run, &languages, &current_user);
+    }
+
     docker_run.args(&["codesandbox-image", "/bin/bash"]);
 
     let run_output = docker_run
@@ -461,7 +492,6 @@ pub async fn create_container(
             String::from_utf8_lossy(&run_output.stderr)
         );
     }
-    let languages = detect_project_languages(current_dir);
     ensure_language_tools(container_name, &languages)?;
 
     attach_to_container(
@@ -524,7 +554,7 @@ fn build_agent_command(
     skip_permission_flag: Option<&str>,
 ) -> String {
     let mut command = format!(
-        "cd {} && source ~/.bashrc && exec {}",
+        "cd {} && export PATH=\"$HOME/.local/bin:$PATH\" && {}",
         current_dir.display(),
         agent.command()
     );
@@ -657,6 +687,9 @@ RUN curl https://cursor.com/install -fsS | bash
 USER {user}
 WORKDIR /home/{user}
 
+# Set up PATH environment for the user session
+ENV PATH="/home/{user}/.local/bin:/usr/local/go/bin:/home/{user}/.cargo/bin:$PATH"
+
 # Install Rust for the user and ensure cargo is available
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     ~/.cargo/bin/rustup component add rustfmt clippy
@@ -664,11 +697,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
 # Install uv for Python tooling
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Add Go, Rust, and Cargo to PATH
-RUN echo 'export PATH="/usr/local/go/bin:$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
-
-# Add Claude Code to PATH for all sessions
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+# Add Go, Rust, Cargo, and uv to PATH
+RUN echo 'export PATH="/usr/local/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH"' >> ~/.bashrc
 
 # Set working directory to home
 WORKDIR /home/{user}

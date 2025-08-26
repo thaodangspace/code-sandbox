@@ -24,6 +24,17 @@ impl ProjectLanguage {
         }
     }
 
+    pub fn global_config_paths(&self) -> Vec<&'static str> {
+        match self {
+            ProjectLanguage::Rust => vec![".cargo"],
+            ProjectLanguage::NodeJs => vec![".npm", ".npmrc", ".yarn"],
+            ProjectLanguage::Python => vec![".pip", ".cache/pip", ".pypirc"],
+            ProjectLanguage::Go => vec!["go", ".config/go"],
+            ProjectLanguage::Php => vec![".composer"],
+            ProjectLanguage::Ruby => vec![".gem", ".bundle"],
+        }
+    }
+
     pub fn tool(&self) -> &'static str {
         match self {
             ProjectLanguage::Rust => "cargo",

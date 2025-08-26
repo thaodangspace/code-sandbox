@@ -109,6 +109,14 @@ cargo install codesandbox
 
 Visit the [Releases](https://github.com/your-org/code-sandbox/releases) page to download pre-built binaries for your platform.
 
+### Method 5: Install via npm
+
+```bash
+npm install -g codesandbox-cli
+```
+
+This will compile the CLI using Rust's build tool and expose a `codesandbox` command via npm.
+
 ## Usage
 
 ### Quick Start

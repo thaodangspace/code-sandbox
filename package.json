@@ -1,0 +1,25 @@
+{
+  "name": "codesandbox-cli",
+  "version": "0.1.0",
+  "description": "Code Sandbox CLI packaged for npm",
+  "bin": {
+    "codesandbox": "./bin/codesandbox.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "install.js"
+  ],
+  "scripts": {
+    "postinstall": "node install.js",
+    "test": "node -e \"console.log('No tests')\""
+  },
+  "keywords": [
+    "cli",
+    "codesandbox",
+    "rust",
+    "docker"
+  ],
+  "author": "",
+  "license": "MIT"
+}

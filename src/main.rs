@@ -90,6 +90,7 @@ async fn main() -> Result<()> {
                     &cli.agent,
                     true,
                     skip_permission_flag.as_deref(),
+                    cli.shell,
                 )
                 .await?;
                 return Ok(());
@@ -151,8 +152,14 @@ async fn main() -> Result<()> {
                     env::set_current_dir(path)
                         .with_context(|| format!("Failed to change directory to {}", path))?;
                     let (_, name, _) = &containers[num - 1];
-                    resume_container(name, &cli.agent, false, skip_permission_flag.as_deref())
-                        .await?;
+                    resume_container(
+                        name,
+                        &cli.agent,
+                        false,
+                        skip_permission_flag.as_deref(),
+                        cli.shell,
+                    )
+                    .await?;
                 } else {
                     println!("Path not available for selected container");
                 }
@@ -198,8 +205,14 @@ async fn main() -> Result<()> {
         match input.parse::<usize>() {
             Ok(num) if num >= 1 && num <= containers.len() => {
                 let selected = &containers[num - 1];
-                resume_container(selected, &cli.agent, false, skip_permission_flag.as_deref())
-                    .await?;
+                resume_container(
+                    selected,
+                    &cli.agent,
+                    false,
+                    skip_permission_flag.as_deref(),
+                    cli.shell,
+                )
+                .await?;
             }
             _ => println!("Invalid selection"),
         }
@@ -210,7 +223,14 @@ async fn main() -> Result<()> {
         let containers = list_containers(&current_dir)?;
         if let Some(latest) = containers.first() {
             println!("Attaching to existing container for worktree: {}", latest);
-            resume_container(latest, &cli.agent, false, skip_permission_flag.as_deref()).await?;
+            resume_container(
+                latest,
+                &cli.agent,
+                false,
+                skip_permission_flag.as_deref(),
+                cli.shell,
+            )
+            .await?;
             return Ok(());
         }
     }
@@ -236,6 +256,7 @@ async fn main() -> Result<()> {
         additional_dir.as_deref(),
         &cli.agent,
         skip_permission_flag.as_deref(),
+        cli.shell,
     )
     .await?;
     save_last_container(&container_name)?;

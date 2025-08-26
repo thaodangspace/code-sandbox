@@ -114,6 +114,12 @@ fn parse_agent_option() {
 }
 
 #[test]
+fn parse_shell_flag() {
+    let cli = Cli::parse_from(["codesandbox", "--shell"]);
+    assert!(cli.shell);
+}
+
+#[test]
 fn parse_worktree_option() {
     let cli = Cli::parse_from(["codesandbox", "--worktree", "feature"]);
     assert_eq!(cli.worktree.as_deref(), Some("feature"));

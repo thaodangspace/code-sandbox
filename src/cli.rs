@@ -34,6 +34,9 @@ pub struct Cli {
     )]
     pub worktree: Option<String>,
 
+    #[arg(long, help = "Attach to container shell without starting the agent")]
+    pub shell: bool,
+
     #[arg(
         long,
         value_enum,

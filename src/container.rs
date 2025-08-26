@@ -661,6 +661,9 @@ WORKDIR /home/{user}
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     ~/.cargo/bin/rustup component add rustfmt clippy
 
+# Install uv for Python tooling
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Add Go, Rust, and Cargo to PATH
 RUN echo 'export PATH="/usr/local/go/bin:$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
 

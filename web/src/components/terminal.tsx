@@ -61,10 +61,14 @@ export default function Terminal({ containerName }: TerminalProps) {
             const pageParams = new URLSearchParams(window.location.search);
             const run = pageParams.get('run');
             const runB64 = pageParams.get('run_b64');
+            const cwd = pageParams.get('cwd');
+            const cwdB64 = pageParams.get('cwd_b64');
             const wsParams = new URLSearchParams();
             wsParams.set('token', token);
             if (runB64) wsParams.set('run_b64', runB64);
             else if (run) wsParams.set('run', run);
+            if (cwdB64) wsParams.set('cwd_b64', cwdB64);
+            else if (cwd) wsParams.set('cwd', cwd);
 
             const ws = new WebSocket(
                 `${protocol}://${window.location.host}/terminal/${activeContainer}?${wsParams.toString()}`

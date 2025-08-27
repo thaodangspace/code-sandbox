@@ -166,6 +166,8 @@ pub(crate) struct TerminalParams {
     token: Option<String>,
     run: Option<String>,
     run_b64: Option<String>,
+    cwd: Option<String>,
+    cwd_b64: Option<String>,
 }
 
 pub(crate) async fn terminal_ws(
@@ -180,7 +182,7 @@ pub(crate) async fn terminal_ws(
         .unwrap_or(true);
 
     if token_matches {
-        ws.on_upgrade(move |socket| handle_terminal(socket, container, params.run, params.run_b64))
+        ws.on_upgrade(move |socket| handle_terminal(socket, container, params.run, params.run_b64, params.cwd, params.cwd_b64))
     } else {
         (StatusCode::UNAUTHORIZED, "invalid token").into_response()
     }
@@ -191,23 +193,49 @@ async fn handle_terminal(
     container: String,
     run: Option<String>,
     run_b64: Option<String>,
+    cwd: Option<String>,
+    cwd_b64: Option<String>,
 ) {
-    let mut child = match Command::new("docker")
-        // Do not request a TTY from Docker here; allocate a PTY inside the
-        // container using `script` so it works from non-TTY servers.
-        .args([
-            "exec",
-            "-i",
-            &container,
-            "/usr/bin/env",
-            "TERM=xterm-256color",
-            "/usr/bin/script",
-            "-q",
-            "-f",
-            "-c",
-            "bash -l",
-            "-",
-        ])
+    // Resolve working directory (if provided via query params)
+    let resolved_cwd = if let Some(cwd_b64) = cwd_b64 {
+        match base64::engine::general_purpose::STANDARD.decode(cwd_b64.as_bytes()) {
+            Ok(bytes) => Some(String::from_utf8_lossy(&bytes).to_string()),
+            Err(_) => cwd,
+        }
+    } else {
+        cwd
+    };
+
+    // If a working directory was provided, ensure it exists inside the container
+    if let Some(ref workdir) = resolved_cwd {
+        let _ = Command::new("docker")
+            .args(["exec", &container, "mkdir", "-p", workdir])
+            .status()
+            .await;
+    }
+
+    // Build docker exec command, adding -w when we have a workdir
+    let mut docker_cmd = Command::new("docker");
+    docker_cmd.arg("exec");
+    docker_cmd.arg("-i");
+    if let Some(ref workdir) = resolved_cwd {
+        docker_cmd.args(["-w", workdir]);
+    }
+    // Do not request a TTY from Docker here; allocate a PTY inside the
+    // container using `script` so it works from non-TTY servers.
+    docker_cmd.args([
+        &container,
+        "/usr/bin/env",
+        "TERM=xterm-256color",
+        "/usr/bin/script",
+        "-q",
+        "-f",
+        "-c",
+        "bash -l",
+        "-",
+    ]);
+
+    let mut child = match docker_cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

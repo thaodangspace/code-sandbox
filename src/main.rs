@@ -366,9 +366,11 @@ async fn maybe_open_web(
     let token = container_name;
     let cmd = build_agent_command_for_web(current_dir, agent, agent_continue, skip_permission_flag);
     let run_b64 = base64::engine::general_purpose::STANDARD.encode(cmd.as_bytes());
+    // Also pass the desired working directory so the shell starts in project root
+    let cwd_b64 = base64::engine::general_purpose::STANDARD.encode(current_dir.display().to_string().as_bytes());
     let url = format!(
-        "http://localhost:6789/?container={}&token={}&run_b64={}",
-        container_name, token, run_b64
+        "http://localhost:6789/?container={}&token={}&run_b64={}&cwd_b64={}",
+        container_name, token, run_b64, cwd_b64
     );
 
     // Try to open the system browser

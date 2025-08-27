@@ -1,5 +1,5 @@
 target/
-dist/
+/dist/
 .idea/
 .vscode/
 .DS_Store
@@ -9,4 +9,3 @@ dist/
 .env.test.local
 .env.production.local
 web/node_modules/
-web/dist/

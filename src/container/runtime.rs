@@ -121,7 +121,7 @@ fn build_run_command(
     let mut env_file_overlays: Vec<NamedTempFile> = Vec::new();
     for file in settings.env_files.iter() {
         let target = current_dir.join(file);
-        if target.exists() {
+        if target.is_file() {
             let tmp = NamedTempFile::new().context("Failed to create temp file for env masking")?;
             docker_run.args([
                 "-v",

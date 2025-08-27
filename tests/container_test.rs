@@ -242,4 +242,10 @@ async fn create_container_masks_only_existing_env_files() {
             .display()
             .to_string()
     ));
+
+    // Ensure no new env files were created on the host
+    assert!(!project_dir.join(".env.local").exists());
+    assert!(!project_dir.join(".env.development.local").exists());
+    assert!(!project_dir.join(".env.test.local").exists());
+    assert!(!project_dir.join(".env.production.local").exists());
 }

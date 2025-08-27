@@ -20,3 +20,6 @@ tempfile = "3.8"
 futures = "0.3"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 
+[dev-dependencies]
+tower = "0.4"
+

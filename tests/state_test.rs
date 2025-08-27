@@ -2,13 +2,32 @@
 mod state;
 
 use state::{clear_last_container, load_last_container, save_last_container};
-use std::env;
+use std::{env, path::PathBuf, sync::Mutex};
 use tempfile::tempdir;
 
-fn setup_temp_home() -> tempfile::TempDir {
+struct TempHome {
+    _dir: tempfile::TempDir,
+    _guard: std::sync::MutexGuard<'static, ()>,
+    original: Option<PathBuf>,
+}
+
+impl Drop for TempHome {
+    fn drop(&mut self) {
+        if let Some(ref path) = self.original {
+            env::set_var("HOME", path);
+        } else {
+            env::remove_var("HOME");
+        }
+    }
+}
+
+fn setup_temp_home() -> TempHome {
+    static HOME_LOCK: Mutex<()> = Mutex::new(());
+    let guard = HOME_LOCK.lock().unwrap();
+    let original = env::var_os("HOME").map(PathBuf::from);
     let dir = tempdir().expect("failed to create temp dir");
     env::set_var("HOME", dir.path());
-    dir
+    TempHome { _dir: dir, _guard: guard, original }
 }
 
 #[test]
@@ -34,3 +53,4 @@ fn test_clear_last_container() {
     let loaded = load_last_container().expect("load should succeed");
     assert!(loaded.is_none());
 }
+

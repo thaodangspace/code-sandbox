@@ -260,9 +260,11 @@ async fn main() -> Result<()> {
     )
     .await?;
     save_last_container(&container_name)?;
+    let token = container_name.clone();
 
     println!("Container {container_name} started successfully!");
-    println!("To attach to the container, run: docker exec -it {container_name} /bin/bash");
+    println!("Access the terminal at: http://localhost:6789/?container={container_name}&token={token}");
+    println!("To attach to the container manually, run: docker exec -it {container_name} /bin/bash");
 
     Ok(())
 }

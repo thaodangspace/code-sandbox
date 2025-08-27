@@ -54,8 +54,13 @@ export default function Terminal({ containerName }: TerminalProps) {
             }, 100);
 
             const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const token =
+                new URLSearchParams(window.location.search).get('token') ||
+                activeContainer;
             const ws = new WebSocket(
-                `${protocol}://${window.location.hostname}:6789/terminal/${activeContainer}`
+                `${protocol}://${window.location.host}/terminal/${activeContainer}?token=${encodeURIComponent(
+                    token
+                )}`
             );
             wsRef.current = ws;
 

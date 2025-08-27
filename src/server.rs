@@ -2,15 +2,15 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path,
+        Path, Query,
     },
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::get,
     Extension, Json, Router,
 };
 use futures::{SinkExt, StreamExt};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -157,8 +157,21 @@ async fn get_changed(
     }
 }
 
-async fn terminal_ws(ws: WebSocketUpgrade, Path(container): Path<String>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_terminal(socket, container))
+#[derive(Deserialize)]
+pub(crate) struct TerminalParams {
+    token: String,
+}
+
+pub(crate) async fn terminal_ws(
+    ws: WebSocketUpgrade,
+    Path(container): Path<String>,
+    Query(params): Query<TerminalParams>,
+) -> Response {
+    if params.token == container {
+        ws.on_upgrade(move |socket| handle_terminal(socket, container))
+    } else {
+        (StatusCode::UNAUTHORIZED, "invalid token").into_response()
+    }
 }
 
 async fn handle_terminal(mut socket: WebSocket, container: String) {

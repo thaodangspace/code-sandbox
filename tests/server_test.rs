@@ -1,10 +1,11 @@
 use axum::{
     body::Body,
     http::{Request, StatusCode},
-    routing::get,
+    routing::{get, get_service},
     Router,
 };
 use tower::ServiceExt;
+use tower_http::services::ServeDir;
 
 #[path = "../src/server.rs"]
 mod server;
@@ -24,4 +25,19 @@ async fn websocket_route_requires_upgrade() {
         .unwrap();
 
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn serves_frontend_index() {
+    let app = Router::new().fallback_service(
+        get_service(ServeDir::new("web/dist"))
+            .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
+    );
+
+    let res = app
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
 }

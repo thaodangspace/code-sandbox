@@ -211,8 +211,11 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
         loop {
             match stdout.read(&mut out_buf).await {
                 Ok(n) if n > 0 => {
-                    let text = String::from_utf8_lossy(&out_buf[..n]).to_string();
-                    if sender.send(Message::Text(text)).await.is_err() {
+                    if sender
+                        .send(Message::Binary(out_buf[..n].to_vec()))
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -225,10 +228,16 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(t) => {
-                let _ = stdin.write_all(t.as_bytes()).await;
+                if stdin.write_all(t.as_bytes()).await.is_err() {
+                    break;
+                }
+                let _ = stdin.flush().await;
             }
             Message::Binary(b) => {
-                let _ = stdin.write_all(&b).await;
+                if stdin.write_all(&b).await.is_err() {
+                    break;
+                }
+                let _ = stdin.flush().await;
             }
             Message::Close(_) => break,
             _ => {}

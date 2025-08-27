@@ -112,10 +112,10 @@ Visit the [Releases](https://github.com/your-org/code-sandbox/releases) page to 
 ### Method 5: Install via npm
 
 ```bash
-npm install -g codesandbox-cli
+npm install -g @thaodangspace/code-sandbox
 ```
 
-This will compile the CLI using Rust's build tool and expose a `codesandbox` command via npm.
+This compiles the CLI using Rust and exposes a `codesandbox` command via npm.
 
 ## Usage
 
@@ -169,6 +169,24 @@ codesandbox ls
 # Create and use a git worktree for isolated branch work
 codesandbox --worktree feature-branch
 ```
+
+### Web UI Mode
+
+To open the browser-based terminal instead of attaching in your CLI:
+
+```bash
+codesandbox --web
+```
+
+Set it as the default via `~/.config/codesandbox/settings.json`:
+
+```json
+{
+  "web": true
+}
+```
+
+When web mode is enabled, codesandbox will start the local server if needed, open `http://localhost:6789`, and auto-run your selected agent in the browser terminal.
 
 ## Connecting to the Container
 

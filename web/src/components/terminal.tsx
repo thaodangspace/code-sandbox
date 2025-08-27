@@ -57,16 +57,24 @@ export default function Terminal({ containerName }: TerminalProps) {
             const token =
                 new URLSearchParams(window.location.search).get('token') ||
                 activeContainer;
+            // Forward auto-run params to the server so it can inject them immediately
+            const pageParams = new URLSearchParams(window.location.search);
+            const run = pageParams.get('run');
+            const runB64 = pageParams.get('run_b64');
+            const wsParams = new URLSearchParams();
+            wsParams.set('token', token);
+            if (runB64) wsParams.set('run_b64', runB64);
+            else if (run) wsParams.set('run', run);
+
             const ws = new WebSocket(
-                `${protocol}://${window.location.host}/terminal/${activeContainer}?token=${encodeURIComponent(
-                    token
-                )}`
+                `${protocol}://${window.location.host}/terminal/${activeContainer}?${wsParams.toString()}`
             );
             wsRef.current = ws;
 
             ws.onopen = () => {
                 setIsConnecting(false);
                 term.write('Connected to container...\r\n');
+                // No-op: autorun is now injected by the server via WS query params
             };
 
             ws.onmessage = (e) => {

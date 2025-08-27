@@ -37,6 +37,9 @@ pub struct Cli {
     #[arg(long, help = "Attach to container shell without starting the agent")]
     pub shell: bool,
 
+    #[arg(long, help = "Open web UI instead of attaching in terminal")]
+    pub web: bool,
+
     #[arg(
         long,
         value_enum,

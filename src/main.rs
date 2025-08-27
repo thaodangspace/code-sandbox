@@ -12,6 +12,9 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
+use std::path::Path;
+use std::time::Duration;
+use base64::Engine as _;
 
 use cli::{Cli, Commands};
 use container::{
@@ -84,6 +87,9 @@ async fn main() -> Result<()> {
         .find(|(agent, _)| agent.eq_ignore_ascii_case(cli.agent.command()))
         .map(|(_, flag)| flag.to_string());
 
+    // Determine whether to use web flow
+    let use_web = cli.web || settings.web.unwrap_or(false);
+
     if cli.cleanup {
         cleanup_containers(&current_dir)?;
         clear_last_container()?;
@@ -103,8 +109,12 @@ async fn main() -> Result<()> {
                     true,
                     skip_permission_flag.as_deref(),
                     cli.shell,
+                    !use_web,
                 )
                 .await?;
+                if use_web {
+                    maybe_open_web(&container_name, &cli.agent, &current_dir, true, skip_permission_flag.as_deref()).await?;
+                }
                 return Ok(());
             }
             None => {
@@ -146,8 +156,9 @@ async fn main() -> Result<()> {
             match rest.parse::<usize>() {
                 Ok(num) if num >= 1 && num <= containers.len() => {
                     if let Some(path) = &containers[num - 1].2 {
+                        let escaped = path.replace('\'', "'\\''");
                         Command::new("bash")
-                            .args(["-c", &format!("cd {} && exec bash", path)])
+                            .args(["-c", &format!("cd '{}' && exec bash", escaped)])
                             .status()
                             .ok();
                     } else {
@@ -170,8 +181,12 @@ async fn main() -> Result<()> {
                         false,
                         skip_permission_flag.as_deref(),
                         cli.shell,
+                        !use_web,
                     )
                     .await?;
+                    if use_web {
+                        maybe_open_web(name, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+                    }
                 } else {
                     println!("Path not available for selected container");
                 }
@@ -223,8 +238,12 @@ async fn main() -> Result<()> {
                     false,
                     skip_permission_flag.as_deref(),
                     cli.shell,
+                    !use_web,
                 )
                 .await?;
+                if use_web {
+                    maybe_open_web(selected, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+                }
             }
             _ => println!("Invalid selection"),
         }
@@ -241,8 +260,12 @@ async fn main() -> Result<()> {
                 false,
                 skip_permission_flag.as_deref(),
                 cli.shell,
+                !use_web,
             )
             .await?;
+            if use_web {
+                maybe_open_web(latest, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+            }
             return Ok(());
         }
     }
@@ -269,6 +292,7 @@ async fn main() -> Result<()> {
         &cli.agent,
         skip_permission_flag.as_deref(),
         cli.shell,
+        !use_web,
     )
     .await?;
     save_last_container(&container_name)?;
@@ -278,5 +302,85 @@ async fn main() -> Result<()> {
     println!("Access the terminal at: http://localhost:6789/?container={container_name}&token={token}");
     println!("To attach to the container manually, run: docker exec -it {container_name} /bin/bash");
 
+    if use_web {
+        maybe_open_web(&container_name, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+    }
+
+    Ok(())
+}
+
+fn build_agent_command_for_web(
+    current_dir: &Path,
+    agent: &cli::Agent,
+    agent_continue: bool,
+    skip_permission_flag: Option<&str>,
+) -> String {
+    // Safely quote project path for bash -c
+    let path_str = current_dir.display().to_string();
+    let escaped = path_str.replace('\'', "'\\''");
+    let mut command = format!(
+        "cd '{}' && export PATH=\"$HOME/.local/bin:$PATH\" && {}",
+        escaped,
+        agent.command()
+    );
+    if agent_continue {
+        command.push_str(" --continue");
+    }
+    if let Some(flag) = skip_permission_flag {
+        command.push(' ');
+        command.push_str(flag);
+    }
+    command
+}
+
+async fn ensure_server_running() -> Result<()> {
+    // Try to contact the server briefly; if unavailable, spawn it in the background
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(300))
+        .build()?;
+    let reachable = client.get("http://127.0.0.1:6789/").send().await.is_ok();
+    if !reachable {
+        let exe = env::current_exe()?;
+        let _child = Command::new(exe)
+            .arg("serve")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .spawn()
+            .context("failed to start server in background")?;
+        // Give it a moment to bind
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    Ok(())
+}
+
+async fn maybe_open_web(
+    container_name: &str,
+    agent: &cli::Agent,
+    current_dir: &Path,
+    agent_continue: bool,
+    skip_permission_flag: Option<&str>,
+) -> Result<()> {
+    ensure_server_running().await?;
+
+    let token = container_name;
+    let cmd = build_agent_command_for_web(current_dir, agent, agent_continue, skip_permission_flag);
+    let run_b64 = base64::engine::general_purpose::STANDARD.encode(cmd.as_bytes());
+    let url = format!(
+        "http://localhost:6789/?container={}&token={}&run_b64={}",
+        container_name, token, run_b64
+    );
+
+    // Try to open the system browser
+    let opener = if cfg!(target_os = "macos") {
+        ("open", vec![url.as_str()])
+    } else if cfg!(target_os = "windows") {
+        ("cmd", vec!["/C", "start", url.as_str()])
+    } else {
+        ("xdg-open", vec![url.as_str()])
+    };
+
+    let _ = Command::new(opener.0).args(opener.1).spawn();
+    println!("Opened web UI: {}", url);
     Ok(())
 }

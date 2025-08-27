@@ -12,6 +12,7 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use base64::Engine as _;
 use std::net::SocketAddr;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -163,6 +164,8 @@ async fn get_changed(
 #[derive(Deserialize)]
 pub(crate) struct TerminalParams {
     token: Option<String>,
+    run: Option<String>,
+    run_b64: Option<String>,
 }
 
 pub(crate) async fn terminal_ws(
@@ -177,15 +180,34 @@ pub(crate) async fn terminal_ws(
         .unwrap_or(true);
 
     if token_matches {
-        ws.on_upgrade(move |socket| handle_terminal(socket, container))
+        ws.on_upgrade(move |socket| handle_terminal(socket, container, params.run, params.run_b64))
     } else {
         (StatusCode::UNAUTHORIZED, "invalid token").into_response()
     }
 }
 
-async fn handle_terminal(mut socket: WebSocket, container: String) {
+async fn handle_terminal(
+    mut socket: WebSocket,
+    container: String,
+    run: Option<String>,
+    run_b64: Option<String>,
+) {
     let mut child = match Command::new("docker")
-        .args(["exec", "-i", "-t", &container, "/bin/bash"])
+        // Do not request a TTY from Docker here; allocate a PTY inside the
+        // container using `script` so it works from non-TTY servers.
+        .args([
+            "exec",
+            "-i",
+            &container,
+            "/usr/bin/env",
+            "TERM=xterm-256color",
+            "/usr/bin/script",
+            "-q",
+            "-f",
+            "-c",
+            "bash -l",
+            "-",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -202,20 +224,50 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
 
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
 
-    let (mut sender, mut receiver) = socket.split();
+    let (sender, mut receiver) = socket.split();
+    let sender = Arc::new(Mutex::new(sender));
 
-    // Forward shell output to websocket
-    let mut out_buf = [0u8; 1024];
+    // If an autorun command was provided, send it immediately
+    if let Some(cmd_b64) = run_b64 {
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(cmd_b64.as_bytes()) {
+            let mut to_send = bytes;
+            to_send.push(b'\n');
+            let _ = stdin.write_all(&to_send).await;
+            let _ = stdin.flush().await;
+        }
+    } else if let Some(cmd) = run {
+        let _ = stdin.write_all(format!("{}\n", cmd).as_bytes()).await;
+        let _ = stdin.flush().await;
+    }
+
+    // Forward shell stdout to websocket as text frames
+    let mut out_buf = [0u8; 4096];
+    let mut err_buf = [0u8; 4096];
+    let sender_stdout = Arc::clone(&sender);
     let stdout_task = tokio::spawn(async move {
         loop {
             match stdout.read(&mut out_buf).await {
                 Ok(n) if n > 0 => {
-                    if sender
-                        .send(Message::Binary(out_buf[..n].to_vec()))
-                        .await
-                        .is_err()
-                    {
+                    let chunk = String::from_utf8_lossy(&out_buf[..n]).to_string();
+                    if sender_stdout.lock().await.send(Message::Text(chunk)).await.is_err() {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+    });
+
+    // Forward shell stderr to websocket as text frames
+    let sender_stderr = Arc::clone(&sender);
+    let stderr_task = tokio::spawn(async move {
+        loop {
+            match stderr.read(&mut err_buf).await {
+                Ok(n) if n > 0 => {
+                    let chunk = String::from_utf8_lossy(&err_buf[..n]).to_string();
+                    if sender_stderr.lock().await.send(Message::Text(chunk)).await.is_err() {
                         break;
                     }
                 }
@@ -246,6 +298,7 @@ async fn handle_terminal(mut socket: WebSocket, container: String) {
 
     let _ = stdin.shutdown().await;
     let _ = stdout_task.await;
+    let _ = stderr_task.await;
     let _ = child.kill().await;
 }
 

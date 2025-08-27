@@ -227,6 +227,7 @@ pub async fn create_container(
     agent: &Agent,
     skip_permission_flag: Option<&str>,
     shell: bool,
+    attach: bool,
 ) -> Result<()> {
     let current_user = env::var("USER").unwrap_or_else(|_| "ubuntu".to_string());
     build_docker_image(&current_user)?;
@@ -249,15 +250,19 @@ pub async fn create_container(
         );
     }
     ensure_language_tools(container_name, &languages)?;
-    attach_to_container(
-        container_name,
-        current_dir,
-        agent,
-        false,
-        skip_permission_flag,
-        shell,
-    )
-    .await
+    if attach {
+        attach_to_container(
+            container_name,
+            current_dir,
+            agent,
+            false,
+            skip_permission_flag,
+            shell,
+        )
+        .await
+    } else {
+        Ok(())
+    }
 }
 
 pub async fn resume_container(
@@ -266,6 +271,7 @@ pub async fn resume_container(
     agent_continue: bool,
     skip_permission_flag: Option<&str>,
     shell: bool,
+    attach: bool,
 ) -> Result<()> {
     println!("Resuming container: {}", container_name);
 
@@ -290,16 +296,20 @@ pub async fn resume_container(
         println!("Container is already running");
     }
 
-    let current_dir = env::current_dir().context("Failed to get current directory")?;
-    attach_to_container(
-        container_name,
-        &current_dir,
-        agent,
-        agent_continue,
-        skip_permission_flag,
-        shell,
-    )
-    .await
+    if attach {
+        let current_dir = env::current_dir().context("Failed to get current directory")?;
+        attach_to_container(
+            container_name,
+            &current_dir,
+            agent,
+            agent_continue,
+            skip_permission_flag,
+            shell,
+        )
+        .await
+    } else {
+        Ok(())
+    }
 }
 
 fn build_agent_command(
@@ -308,9 +318,11 @@ fn build_agent_command(
     agent_continue: bool,
     skip_permission_flag: Option<&str>,
 ) -> String {
+    let path_str = current_dir.display().to_string();
+    let escaped = path_str.replace('\'', "'\\''");
     let mut command = format!(
-        "cd {} && export PATH=\"$HOME/.local/bin:$PATH\" && {}",
-        current_dir.display(),
+        "cd '{}' && export PATH=\"$HOME/.local/bin:$PATH\" && {}",
+        escaped,
         agent.command()
     );
 
@@ -334,6 +346,7 @@ async fn attach_to_container(
     skip_permission_flag: Option<&str>,
     shell: bool,
 ) -> Result<()> {
+    let allocate_tty = atty::is(atty::Stream::Stdout) && atty::is(atty::Stream::Stdin);
     if shell {
         println!("Attaching to container shell...");
     } else {
@@ -357,12 +370,15 @@ async fn attach_to_container(
     }
 
     if shell {
-        let command = format!(
-            "cd {} && source ~/.bashrc && exec /bin/bash",
-            current_dir.display()
-        );
+        let path_str = current_dir.display().to_string();
+        let escaped = path_str.replace('\'', "'\\''");
+        let command = format!("cd '{}' && source ~/.bashrc && exec /bin/bash", escaped);
+        let mut args = vec!["exec"]; 
+        if allocate_tty { args.push("-it"); } else { args.push("-i"); }
+        args.push(container_name);
+        args.extend(["/bin/bash", "-c", &command]);
         let attach_status = Command::new("docker")
-            .args(&["exec", "-it", container_name, "/bin/bash", "-c", &command])
+            .args(&args)
             .status()
             .context("Failed to attach to container")?;
         if !attach_status.success() {
@@ -376,8 +392,12 @@ async fn attach_to_container(
 
     let command = build_agent_command(current_dir, agent, agent_continue, skip_permission_flag);
 
+    let mut args = vec!["exec"]; 
+    if allocate_tty { args.push("-it"); } else { args.push("-i"); }
+    args.push(container_name);
+    args.extend(["/bin/bash", "-c", &command]);
     let attach_status = Command::new("docker")
-        .args(&["exec", "-it", container_name, "/bin/bash", "-c", &command])
+        .args(&args)
         .status()
         .context("Failed to attach to container")?;
 

@@ -162,7 +162,7 @@ async fn get_changed(
 
 #[derive(Deserialize)]
 pub(crate) struct TerminalParams {
-    token: String,
+    token: Option<String>,
 }
 
 pub(crate) async fn terminal_ws(
@@ -170,7 +170,13 @@ pub(crate) async fn terminal_ws(
     Path(container): Path<String>,
     Query(params): Query<TerminalParams>,
 ) -> Response {
-    if params.token == container {
+    let token_matches = params
+        .token
+        .as_ref()
+        .map(|t| t == &container)
+        .unwrap_or(true);
+
+    if token_matches {
         ws.on_upgrade(move |socket| handle_terminal(socket, container))
     } else {
         (StatusCode::UNAUTHORIZED, "invalid token").into_response()

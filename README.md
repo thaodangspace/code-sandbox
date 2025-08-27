@@ -208,6 +208,19 @@ Run it as a background daemon:
 codesandbox serve -d
 ```
 
+Stop the server:
+
+```bash
+codesandbox stop
+```
+
+Restart the server (optionally in the background):
+
+```bash
+codesandbox restart
+codesandbox restart -d
+```
+
 The server listens on port 6789. Query the changes for a specific container:
 
 ```bash

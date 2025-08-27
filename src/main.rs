@@ -26,35 +26,47 @@ use worktree::create_worktree;
 async fn main() -> Result<()> {
     let cli = Cli::parse_args();
 
-    if let Some(Commands::Serve {
-        daemon,
-        stop,
-        restart,
-    }) = &cli.command
-    {
-        if *stop {
-            server::stop().await?;
-            return Ok(());
+    if let Some(cmd) = &cli.command {
+        match cmd {
+            Commands::Serve { daemon } => {
+                check_docker_availability()?;
+                if *daemon {
+                    let exe = env::current_exe()?;
+                    Command::new(exe)
+                        .arg("serve")
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .stdin(Stdio::null())
+                        .spawn()
+                        .context("failed to start daemonized server")?;
+                } else {
+                    server::serve().await?;
+                }
+                return Ok(());
+            }
+            Commands::Stop => {
+                server::stop().await?;
+                return Ok(());
+            }
+            Commands::Restart { daemon } => {
+                let _ = server::stop().await;
+                check_docker_availability()?;
+                if *daemon {
+                    let exe = env::current_exe()?;
+                    Command::new(exe)
+                        .arg("serve")
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .stdin(Stdio::null())
+                        .spawn()
+                        .context("failed to start daemonized server")?;
+                } else {
+                    server::serve().await?;
+                }
+                return Ok(());
+            }
+            _ => {}
         }
-
-        if *restart {
-            let _ = server::stop().await;
-        }
-
-        check_docker_availability()?;
-        if *daemon {
-            let exe = env::current_exe()?;
-            Command::new(exe)
-                .arg("serve")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .stdin(Stdio::null())
-                .spawn()
-                .context("failed to start daemonized server")?;
-        } else {
-            server::serve().await?;
-        }
-        return Ok(());
     }
 
     let mut current_dir = env::current_dir().context("Failed to get current directory")?;

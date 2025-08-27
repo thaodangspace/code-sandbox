@@ -39,11 +39,7 @@ fn parse_serve_subcommand() {
     let cli = Cli::parse_from(["codesandbox", "serve"]);
     assert!(matches!(
         cli.command,
-        Some(Commands::Serve {
-            daemon: false,
-            stop: false,
-            restart: false
-        })
+        Some(Commands::Serve { daemon: false })
     ));
 }
 
@@ -52,37 +48,31 @@ fn parse_serve_daemon_flag() {
     let cli = Cli::parse_from(["codesandbox", "serve", "-d"]);
     assert!(matches!(
         cli.command,
-        Some(Commands::Serve {
-            daemon: true,
-            stop: false,
-            restart: false
-        })
+        Some(Commands::Serve { daemon: true })
     ));
 }
 
 #[test]
-fn parse_serve_stop_flag() {
-    let cli = Cli::parse_from(["codesandbox", "serve", "--stop"]);
+fn parse_stop_subcommand() {
+    let cli = Cli::parse_from(["codesandbox", "stop"]);
+    assert!(matches!(cli.command, Some(Commands::Stop)));
+}
+
+#[test]
+fn parse_restart_subcommand() {
+    let cli = Cli::parse_from(["codesandbox", "restart"]);
     assert!(matches!(
         cli.command,
-        Some(Commands::Serve {
-            daemon: false,
-            stop: true,
-            restart: false
-        })
+        Some(Commands::Restart { daemon: false })
     ));
 }
 
 #[test]
-fn parse_serve_restart_flag() {
-    let cli = Cli::parse_from(["codesandbox", "serve", "--restart"]);
+fn parse_restart_daemon_flag() {
+    let cli = Cli::parse_from(["codesandbox", "restart", "-d"]);
     assert!(matches!(
         cli.command,
-        Some(Commands::Serve {
-            daemon: false,
-            stop: false,
-            restart: true
-        })
+        Some(Commands::Restart { daemon: true })
     ));
 }
 

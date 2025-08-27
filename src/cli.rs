@@ -61,10 +61,13 @@ pub enum Commands {
     Serve {
         #[arg(short = 'd', long = "daemon", help = "Run server in the background")]
         daemon: bool,
-        #[arg(long, help = "Stop the running server", conflicts_with = "restart")]
-        stop: bool,
-        #[arg(long, help = "Restart the server", conflicts_with = "stop")]
-        restart: bool,
+    },
+    #[command(about = "Stop the running Code Sandbox API server")]
+    Stop,
+    #[command(about = "Restart the Code Sandbox API server")]
+    Restart {
+        #[arg(short = 'd', long = "daemon", help = "Run server in the background")]
+        daemon: bool,
     },
 }
 

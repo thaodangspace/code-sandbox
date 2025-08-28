@@ -27,6 +27,9 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::cli::Agent;
 use crate::container::{check_docker_availability, create_container, generate_container_name};
 
+use crate::cli::Agent;
+use crate::container::{check_docker_availability, create_container, generate_container_name};
+
 #[derive(Serialize)]
 struct FileDiff {
     path: String,

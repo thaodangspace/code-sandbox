@@ -3,6 +3,9 @@ import { useAtom } from 'jotai';
 import { containerAtom } from '../state';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+// WebGL renderer can significantly improve rendering, which helps tmux redraws
+// Load optionally in case the environment doesn't support it.
+import { WebglAddon } from 'xterm-addon-webgl';
 import 'xterm/css/xterm.css';
 
 interface TerminalProps {
@@ -47,20 +50,37 @@ export default function Terminal({ containerName }: TerminalProps) {
             cursorBlink: true,
             fontSize: 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            scrollback: 5000,
+            drawBoldTextInBrightColors: true,
         });
         
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
+        // Try to enable WebGL rendering (falls back automatically if unavailable)
+        try {
+            const webgl = new WebglAddon();
+            term.loadAddon(webgl);
+        } catch (_) {
+            // Ignore if WebGL addon fails to initialize
+        }
         
         termRef.current = term;
 
         try {
             term.open(ref.current);
+            term.focus();
             
             // Wait for the terminal to be fully rendered before fitting
             setTimeout(() => {
                 try {
                     fitAddon.fit();
+                    // After initial fit, inform the server of the current size
+                    const ws = wsRef.current;
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const cols = term.cols;
+                        const rows = term.rows;
+                        ws.send(`__RESIZE__:${cols},${rows}`);
+                    }
                 } catch (err) {
                     console.warn('Failed to fit terminal:', err);
                 }
@@ -92,6 +112,13 @@ export default function Terminal({ containerName }: TerminalProps) {
                 setIsConnecting(false);
                 term.write('Connected to container...\r\n');
                 // No-op: autorun is now injected by the server via WS query params
+                // Send current size once connected
+                try {
+                    fitAddon.fit();
+                    const cols = term.cols;
+                    const rows = term.rows;
+                    ws.send(`__RESIZE__:${cols},${rows}`);
+                } catch {}
             };
 
             ws.onmessage = (e) => {
@@ -123,6 +150,12 @@ export default function Terminal({ containerName }: TerminalProps) {
             const handleResize = () => {
                 try {
                     fitAddon.fit();
+                    const ws = wsRef.current;
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const cols = term.cols;
+                        const rows = term.rows;
+                        ws.send(`__RESIZE__:${cols},${rows}`);
+                    }
                 } catch (err) {
                     console.warn('Failed to fit terminal on resize:', err);
                 }
@@ -130,8 +163,18 @@ export default function Terminal({ containerName }: TerminalProps) {
 
             window.addEventListener('resize', handleResize);
 
+            // Also observe container size changes (e.g., tab switches)
+            let ro: ResizeObserver | null = null;
+            if (ref.current) {
+                ro = new ResizeObserver(() => handleResize());
+                ro.observe(ref.current);
+            }
+
             return () => {
                 window.removeEventListener('resize', handleResize);
+                if (ro) {
+                    ro.disconnect();
+                }
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.close();
                 }

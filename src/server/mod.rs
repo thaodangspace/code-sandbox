@@ -22,7 +22,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::{oneshot, Mutex};
 use tower::{service_fn, ServiceExt};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
+
+use crate::cli::Agent;
+use crate::container::{check_docker_availability, create_container, generate_container_name};
 
 use crate::cli::Agent;
 use crate::container::{check_docker_availability, create_container, generate_container_name};
@@ -483,7 +486,7 @@ async fn shutdown_handler(
 pub async fn serve() -> Result<()> {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
-    let serve_dir = ServeDir::new("web/dist");
+    let serve_dir = ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html"));
     let static_files = service_fn(move |req: Request<Body>| {
         let serve_dir = serve_dir.clone();
         async move {

@@ -7,8 +7,7 @@ use axum::{
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
-#[path = "../src/server.rs"]
-mod server;
+use codesandbox::server;
 
 #[tokio::test]
 async fn websocket_route_requires_upgrade() {

@@ -15,7 +15,20 @@ export default function Terminal({ containerName }: TerminalProps) {
     const wsRef = useRef<WebSocket | null>(null);
     const [container] = useAtom(containerAtom);
     const [isConnecting, setIsConnecting] = useState(false);
+    const [isTouchDevice, setIsTouchDevice] = useState(false);
     const activeContainer = containerName || container;
+
+    const sendKey = (key: string) => {
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(key);
+        }
+        termRef.current?.focus();
+    };
+
+    useEffect(() => {
+        setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    }, []);
 
     useEffect(() => {
         if (!activeContainer || !ref.current) return;
@@ -143,6 +156,22 @@ export default function Terminal({ containerName }: TerminalProps) {
             {isConnecting && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white z-10">
                     Connecting to terminal...
+                </div>
+            )}
+            {isTouchDevice && (
+                <div className="absolute bottom-2 right-2 flex gap-2 z-20">
+                    <button
+                        className="px-2 py-1 text-sm bg-gray-700 text-white rounded"
+                        onClick={() => sendKey('\u0003')}
+                    >
+                        Ctrl+C
+                    </button>
+                    <button
+                        className="px-2 py-1 text-sm bg-gray-700 text-white rounded"
+                        onClick={() => sendKey('\u001b')}
+                    >
+                        Esc
+                    </button>
                 </div>
             )}
             <div ref={ref} className="h-full w-full" />

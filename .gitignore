@@ -9,3 +9,4 @@ target/
 .env.test.local
 .env.production.local
 web/node_modules/
+.serena/logs/**

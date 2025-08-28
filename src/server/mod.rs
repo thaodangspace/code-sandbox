@@ -12,7 +12,9 @@ use axum::{
 };
 use base64::Engine as _;
 use futures::{SinkExt, StreamExt};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -26,6 +28,9 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::cli::Agent;
 use crate::container::{check_docker_availability, create_container, generate_container_name};
+
+static CONTAINER_PATHS: Lazy<Mutex<HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Serialize)]
 struct FileDiff {
@@ -154,6 +159,11 @@ async fn start_container_api(
         ));
     }
 
+    {
+        let mut map = CONTAINER_PATHS.lock().await;
+        map.insert(container_name.clone(), path.display().to_string());
+    }
+
     Ok(Json(StartResponse {
         container: container_name,
     }))
@@ -162,9 +172,32 @@ async fn start_container_api(
 async fn get_changed(
     Path(container): Path<String>,
 ) -> Result<Json<ChangeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let repo_path = {
+        let map = CONTAINER_PATHS.lock().await;
+        match map.get(&container) {
+            Some(p) => p.clone(),
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "unknown container".into(),
+                    }),
+                ))
+            }
+        }
+    };
+
     // Get git status to find changed files
     let status_output = Command::new("docker")
-        .args(["exec", &container, "git", "status", "--porcelain"])
+        .args([
+            "exec",
+            "-w",
+            &repo_path,
+            &container,
+            "git",
+            "status",
+            "--porcelain",
+        ])
         .output()
         .await;
 
@@ -195,7 +228,7 @@ async fn get_changed(
                     ('?', '?') => {
                         // Untracked file - show entire content as added
                         let cat_output = Command::new("docker")
-                            .args(["exec", &container, "cat", &path])
+                            .args(["exec", "-w", &repo_path, &container, "cat", &path])
                             .output()
                             .await;
                         match cat_output {
@@ -218,7 +251,10 @@ async fn get_changed(
                     _ => {
                         // Use git diff for tracked files
                         let diff_output = Command::new("docker")
-                            .args(["exec", &container, "git", "diff", "HEAD", "--", &path])
+                            .args([
+                                "exec", "-w", &repo_path, &container, "git", "diff", "HEAD", "--",
+                                &path,
+                            ])
                             .output()
                             .await;
                         match diff_output {
@@ -229,8 +265,8 @@ async fn get_changed(
                                     // Try diff against index for staged changes
                                     let staged_diff = Command::new("docker")
                                         .args([
-                                            "exec", &container, "git", "diff", "--cached", "--",
-                                            &path,
+                                            "exec", "-w", &repo_path, &container, "git", "diff",
+                                            "--cached", "--", &path,
                                         ])
                                         .output()
                                         .await;

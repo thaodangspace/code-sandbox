@@ -309,6 +309,7 @@ dependencies = [
  "clap",
  "futures",
  "home",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",

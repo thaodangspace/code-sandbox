@@ -312,7 +312,7 @@ pub async fn resume_container(
     }
 }
 
-fn build_agent_command(
+pub fn build_agent_command(
     current_dir: &Path,
     agent: &Agent,
     agent_continue: bool,
@@ -485,20 +485,3 @@ CMD ["/bin/bash"]
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::Path;
-
-    #[test]
-    fn build_command_includes_continue() {
-        let cmd = build_agent_command(Path::new("/project"), &Agent::Claude, true, None);
-        assert!(cmd.contains("claude --continue"));
-    }
-
-    #[test]
-    fn build_command_without_continue() {
-        let cmd = build_agent_command(Path::new("/project"), &Agent::Claude, false, None);
-        assert!(!cmd.contains("--continue"));
-    }
-}

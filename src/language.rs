@@ -109,19 +109,4 @@ pub fn ensure_language_tools(container_name: &str, languages: &[ProjectLanguage]
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn detect_languages() {
-        let tmp = tempdir().unwrap();
-        fs::write(tmp.path().join("Cargo.toml"), "").unwrap();
-        fs::write(tmp.path().join("package.json"), "").unwrap();
-        let langs = detect_project_languages(tmp.path());
-        assert!(langs.contains(&ProjectLanguage::Rust));
-        assert!(langs.contains(&ProjectLanguage::NodeJs));
-    }
-}
+ 

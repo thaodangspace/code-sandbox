@@ -10,4 +10,4 @@ pub use manage::{
     auto_remove_old_containers,
     check_docker_availability,
 };
-pub use runtime::{create_container, resume_container};
+pub use runtime::{build_agent_command, create_container, resume_container};

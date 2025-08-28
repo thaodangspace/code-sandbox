@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { useAtom } from 'jotai';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { containerAtom } from '../state';
 
 interface DirEntry {
   name: string;
@@ -12,7 +10,6 @@ interface DirEntry {
 
 export default function Explorer() {
   const [path, setPath] = useState('/');
-  const [, setContainer] = useAtom(containerAtom);
   const navigate = useNavigate();
 
   const { data, isLoading, error } = useQuery<DirEntry[]>({
@@ -38,7 +35,6 @@ export default function Explorer() {
     });
     if (res.ok) {
       const json = await res.json();
-      setContainer(json.container);
       navigate(`/container/${json.container}`);
     }
   };

@@ -186,7 +186,7 @@ Set it as the default via `~/.config/codesandbox/settings.json`:
 }
 ```
 
-When web mode is enabled, codesandbox will start the local server if needed, open `http://localhost:6789`, and auto-run your selected agent in the browser terminal.
+When web mode is enabled, codesandbox will start the local server if needed, open `http://<host>:6789` (default `localhost`, configurable via `web_host` in settings), and auto-run your selected agent in the browser terminal.
 
 ## Connecting to the Container
 
@@ -273,7 +273,9 @@ Additional behavior can be configured via `settings.json` located at
         "gemini": "--yolo",
         "qwen": "--yolo"
     },
-    "env_files": [".env", ".env.local"]
+    "env_files": [".env", ".env.local"],
+    "web": true,
+    "web_host": "my.devbox.local"
 }
 ```
 

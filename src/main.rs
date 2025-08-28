@@ -78,6 +78,10 @@ async fn main() -> Result<()> {
             .with_context(|| format!("Failed to create worktree for branch {}", branch))?;
     }
     let settings = load_settings().unwrap_or_default();
+    let web_host = settings
+        .web_host
+        .as_deref()
+        .unwrap_or("localhost");
 
     check_docker_availability()?;
     auto_remove_old_containers(settings.auto_remove_minutes.unwrap_or(60))?;
@@ -113,7 +117,15 @@ async fn main() -> Result<()> {
                 )
                 .await?;
                 if use_web {
-                    maybe_open_web(&container_name, &cli.agent, &current_dir, true, skip_permission_flag.as_deref()).await?;
+                    maybe_open_web(
+                        &container_name,
+                        &cli.agent,
+                        &current_dir,
+                        true,
+                        skip_permission_flag.as_deref(),
+                        web_host,
+                    )
+                    .await?;
                 }
                 return Ok(());
             }
@@ -185,7 +197,15 @@ async fn main() -> Result<()> {
                     )
                     .await?;
                     if use_web {
-                        maybe_open_web(name, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+                        maybe_open_web(
+                            name,
+                            &cli.agent,
+                            &current_dir,
+                            false,
+                            skip_permission_flag.as_deref(),
+                            web_host,
+                        )
+                        .await?;
                     }
                 } else {
                     println!("Path not available for selected container");
@@ -242,7 +262,15 @@ async fn main() -> Result<()> {
                 )
                 .await?;
                 if use_web {
-                    maybe_open_web(selected, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+                    maybe_open_web(
+                        selected,
+                        &cli.agent,
+                        &current_dir,
+                        false,
+                        skip_permission_flag.as_deref(),
+                        web_host,
+                    )
+                    .await?;
                 }
             }
             _ => println!("Invalid selection"),
@@ -264,7 +292,15 @@ async fn main() -> Result<()> {
             )
             .await?;
             if use_web {
-                maybe_open_web(latest, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+                maybe_open_web(
+                    latest,
+                    &cli.agent,
+                    &current_dir,
+                    false,
+                    skip_permission_flag.as_deref(),
+                    web_host,
+                )
+                .await?;
             }
             return Ok(());
         }
@@ -299,11 +335,22 @@ async fn main() -> Result<()> {
     let token = container_name.clone();
 
     println!("Container {container_name} started successfully!");
-    println!("Access the terminal at: http://localhost:6789/?container={container_name}&token={token}");
+    println!(
+        "Access the terminal at: http://{}:6789/container/{container_name}?token={token}",
+        web_host
+    );
     println!("To attach to the container manually, run: docker exec -it {container_name} /bin/bash");
 
     if use_web {
-        maybe_open_web(&container_name, &cli.agent, &current_dir, false, skip_permission_flag.as_deref()).await?;
+        maybe_open_web(
+            &container_name,
+            &cli.agent,
+            &current_dir,
+            false,
+            skip_permission_flag.as_deref(),
+            web_host,
+        )
+        .await?;
     }
 
     Ok(())
@@ -360,6 +407,7 @@ async fn maybe_open_web(
     current_dir: &Path,
     agent_continue: bool,
     skip_permission_flag: Option<&str>,
+    web_host: &str,
 ) -> Result<()> {
     ensure_server_running().await?;
 
@@ -369,8 +417,8 @@ async fn maybe_open_web(
     // Also pass the desired working directory so the shell starts in project root
     let cwd_b64 = base64::engine::general_purpose::STANDARD.encode(current_dir.display().to_string().as_bytes());
     let url = format!(
-        "http://localhost:6789/?container={}&token={}&run_b64={}&cwd_b64={}",
-        container_name, token, run_b64, cwd_b64
+        "http://{}:6789/container/{}?token={}&run_b64={}&cwd_b64={}",
+        web_host, container_name, token, run_b64, cwd_b64
     );
 
     // Try to open the system browser

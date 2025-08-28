@@ -14,6 +14,8 @@ pub struct Settings {
     pub env_files: Vec<String>,
     // When true, prefer opening the web UI instead of attaching in terminal
     pub web: Option<bool>,
+    // Hostname to use when printing/opening the web UI URL (defaults to "localhost")
+    pub web_host: Option<String>,
 }
 
 impl Default for Settings {
@@ -31,6 +33,7 @@ impl Default for Settings {
             skip_permission_flags: default_flags,
             env_files: default_env_files(),
             web: Some(false),
+            web_host: Some("localhost".to_string()),
         }
     }
 }

@@ -3,6 +3,9 @@ import { useAtom } from 'jotai';
 import { containerAtom } from '../state';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+// WebGL renderer can significantly improve rendering, which helps tmux redraws
+// Load optionally in case the environment doesn't support it.
+import { WebglAddon } from 'xterm-addon-webgl';
 import 'xterm/css/xterm.css';
 
 interface TerminalProps {
@@ -47,20 +50,37 @@ export default function Terminal({ containerName }: TerminalProps) {
             cursorBlink: true,
             fontSize: 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            scrollback: 5000,
+            drawBoldTextInBrightColors: true,
         });
         
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
+        // Try to enable WebGL rendering (falls back automatically if unavailable)
+        try {
+            const webgl = new WebglAddon();
+            term.loadAddon(webgl);
+        } catch (_) {
+            // Ignore if WebGL addon fails to initialize
+        }
         
         termRef.current = term;
 
         try {
             term.open(ref.current);
+            term.focus();
             
             // Wait for the terminal to be fully rendered before fitting
             setTimeout(() => {
                 try {
                     fitAddon.fit();
+                    // After initial fit, inform the server of the current size
+                    const ws = wsRef.current;
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const cols = term.cols;
+                        const rows = term.rows;
+                        ws.send(`__RESIZE__:${cols},${rows}`);
+                    }
                 } catch (err) {
                     console.warn('Failed to fit terminal:', err);
                 }
@@ -91,7 +111,16 @@ export default function Terminal({ containerName }: TerminalProps) {
             ws.onopen = () => {
                 setIsConnecting(false);
                 term.write('Connected to container...\r\n');
-                // No-op: autorun is now injected by the server via WS query params
+                // Send initial size to backend (tmux) after connection opens
+                try {
+                    const cols = term.cols;
+                    const rows = term.rows;
+                    if (Number.isFinite(cols) && Number.isFinite(rows)) {
+                        ws.send(`__RESIZE__:${cols},${rows}`);
+                    }
+                } catch (err) {
+                    console.warn('Failed to send initial resize:', err);
+                }
             };
 
             ws.onmessage = (e) => {
@@ -119,10 +148,23 @@ export default function Terminal({ containerName }: TerminalProps) {
                 }
             });
 
-            // Handle resize
+            // Propagate terminal resize to backend (tmux)
+            const sendResize = (cols: number, rows: number) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(`__RESIZE__:${cols},${rows}`);
+                }
+            };
+
+            // Handle window resize: fit xterm then notify backend
             const handleResize = () => {
                 try {
                     fitAddon.fit();
+                    // After fitting, xterm updates cols/rows; send them
+                    const cols = term.cols;
+                    const rows = term.rows;
+                    if (Number.isFinite(cols) && Number.isFinite(rows)) {
+                        sendResize(cols, rows);
+                    }
                 } catch (err) {
                     console.warn('Failed to fit terminal on resize:', err);
                 }
@@ -130,11 +172,19 @@ export default function Terminal({ containerName }: TerminalProps) {
 
             window.addEventListener('resize', handleResize);
 
+            // Also listen to xterm's own resize events (e.g. when fonts load)
+            const disposeOnResize = term.onResize(({ cols, rows }) => {
+                if (Number.isFinite(cols) && Number.isFinite(rows)) {
+                    sendResize(cols, rows);
+                }
+            });
+
             return () => {
                 window.removeEventListener('resize', handleResize);
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.close();
                 }
+                disposeOnResize.dispose();
                 term.dispose();
             };
         } catch (err) {

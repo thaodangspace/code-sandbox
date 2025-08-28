@@ -1,3 +1,9 @@
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::needless_borrows_for_generic_args,
+    clippy::manual_contains
+)]
+
 mod cli;
 mod config;
 mod container;
@@ -8,13 +14,13 @@ mod state;
 mod worktree;
 
 use anyhow::{Context, Result};
+use base64::Engine as _;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::process::{Command, Stdio};
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::time::Duration;
-use base64::Engine as _;
 
 use cli::{Cli, Commands};
 use container::{
@@ -78,10 +84,7 @@ async fn main() -> Result<()> {
             .with_context(|| format!("Failed to create worktree for branch {}", branch))?;
     }
     let settings = load_settings().unwrap_or_default();
-    let web_host = settings
-        .web_host
-        .as_deref()
-        .unwrap_or("localhost");
+    let web_host = settings.web_host.as_deref().unwrap_or("localhost");
 
     check_docker_availability()?;
     auto_remove_old_containers(settings.auto_remove_minutes.unwrap_or(60))?;
@@ -141,10 +144,7 @@ async fn main() -> Result<()> {
             println!("No running Code Sandbox containers found.");
             return Ok(());
         }
-        println!(
-            "{:<4}{:<20}{:<20}{}",
-            "No.", "Project", "Container", "Directory"
-        );
+        println!("{:<4}{:<20}{:<20}Directory", "No.", "Project", "Container");
         for (i, (project, name, path)) in containers.iter().enumerate() {
             println!(
                 "{:<4}{:<20}{:<20}{}",
@@ -228,7 +228,7 @@ async fn main() -> Result<()> {
                 println!("No running Code Sandbox containers found.");
             } else {
                 println!("\nCurrently running containers:");
-                println!("{:<20}{}", "Project", "Container");
+                println!("{:<20}Container", "Project");
                 for (project, name, _) in global {
                     println!("{:<20}{}", project, name);
                 }
@@ -339,7 +339,9 @@ async fn main() -> Result<()> {
         "Access the terminal at: http://{}:6789/container/{container_name}?token={token}",
         web_host
     );
-    println!("To attach to the container manually, run: docker exec -it {container_name} /bin/bash");
+    println!(
+        "To attach to the container manually, run: docker exec -it {container_name} /bin/bash"
+    );
 
     if use_web {
         maybe_open_web(
@@ -415,7 +417,8 @@ async fn maybe_open_web(
     let cmd = build_agent_command_for_web(current_dir, agent, agent_continue, skip_permission_flag);
     let run_b64 = base64::engine::general_purpose::STANDARD.encode(cmd.as_bytes());
     // Also pass the desired working directory so the shell starts in project root
-    let cwd_b64 = base64::engine::general_purpose::STANDARD.encode(current_dir.display().to_string().as_bytes());
+    let cwd_b64 = base64::engine::general_purpose::STANDARD
+        .encode(current_dir.display().to_string().as_bytes());
     let url = format!(
         "http://{}:6789/container/{}?token={}&run_b64={}&cwd_b64={}",
         web_host, container_name, token, run_b64, cwd_b64

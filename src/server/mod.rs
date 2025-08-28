@@ -387,7 +387,8 @@ async fn handle_terminal(
         docker_cmd.args(["-w", workdir]);
     }
     // Do not request a TTY from Docker here; allocate a PTY inside the
-    // container using `script` so it works from non-TTY servers.
+    // container using `script` so it works from non-TTY servers. Run tmux so
+    // sessions survive browser reloads.
     docker_cmd.args([
         &container,
         "/usr/bin/env",
@@ -396,7 +397,7 @@ async fn handle_terminal(
         "-q",
         "-f",
         "-c",
-        "bash -l",
+        "tmux new-session -A -s codesandbox bash -l",
         "-",
     ]);
 

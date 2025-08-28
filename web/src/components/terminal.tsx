@@ -3,7 +3,7 @@ import { useAtom } from 'jotai';
 import { containerAtom } from '../state';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-// WebGL renderer can significantly improve rendering, which helps tmux redraws
+// WebGL renderer can significantly improve rendering, which helps screen redraws
 // Load optionally in case the environment doesn't support it.
 import { WebglAddon } from 'xterm-addon-webgl';
 import 'xterm/css/xterm.css';

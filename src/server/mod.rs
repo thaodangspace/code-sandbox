@@ -7,20 +7,25 @@ use axum::{
     },
     http::{Request, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Extension, Json, Router,
 };
+use base64::Engine as _;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use base64::Engine as _;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::{oneshot, Mutex};
 use tower::{service_fn, ServiceExt};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
+
+use crate::cli::Agent;
+use crate::container::{check_docker_availability, create_container, generate_container_name};
 
 #[derive(Serialize)]
 struct FileDiff {
@@ -37,6 +42,121 @@ struct ChangeResponse {
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
+}
+
+#[derive(Serialize)]
+struct DirEntryInfo {
+    name: String,
+    path: String,
+    is_dir: bool,
+}
+
+#[derive(Deserialize)]
+struct ListQuery {
+    path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StartRequest {
+    path: String,
+    agent: String,
+}
+
+#[derive(Serialize)]
+struct StartResponse {
+    container: String,
+}
+
+async fn list_dir(
+    Query(ListQuery { path }): Query<ListQuery>,
+) -> Result<Json<Vec<DirEntryInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    let base = path.unwrap_or_else(|| ".".to_string());
+    let mut entries = fs::read_dir(&base).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    let mut result = Vec::new();
+    while let Some(entry) = entries.next_entry().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })? {
+        let file_type = entry.file_type().await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+        result.push(DirEntryInfo {
+            name: entry.file_name().to_string_lossy().into(),
+            path: entry.path().display().to_string(),
+            is_dir: file_type.is_dir(),
+        });
+    }
+    Ok(Json(result))
+}
+
+async fn start_container_api(
+    Json(req): Json<StartRequest>,
+) -> Result<Json<StartResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let path = PathBuf::from(&req.path);
+    if !path.is_dir() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid path".into(),
+            }),
+        ));
+    }
+
+    let agent = match req.agent.to_lowercase().as_str() {
+        "claude" => Agent::Claude,
+        "gemini" => Agent::Gemini,
+        "codex" => Agent::Codex,
+        "qwen" => Agent::Qwen,
+        "cursor" => Agent::Cursor,
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid agent".into(),
+                }),
+            ))
+        }
+    };
+
+    if let Err(e) = check_docker_availability() {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        ));
+    }
+
+    let container_name = generate_container_name(&path, &agent);
+    if let Err(e) = create_container(&container_name, &path, None, &agent, None, false, false).await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        ));
+    }
+
+    Ok(Json(StartResponse {
+        container: container_name,
+    }))
 }
 
 async fn get_changed(
@@ -162,7 +282,7 @@ async fn get_changed(
 }
 
 #[derive(Deserialize)]
-pub(crate) struct TerminalParams {
+pub struct TerminalParams {
     token: Option<String>,
     run: Option<String>,
     run_b64: Option<String>,
@@ -170,7 +290,7 @@ pub(crate) struct TerminalParams {
     cwd_b64: Option<String>,
 }
 
-pub(crate) async fn terminal_ws(
+pub async fn terminal_ws(
     ws: WebSocketUpgrade,
     Path(container): Path<String>,
     Query(params): Query<TerminalParams>,
@@ -182,7 +302,16 @@ pub(crate) async fn terminal_ws(
         .unwrap_or(true);
 
     if token_matches {
-        ws.on_upgrade(move |socket| handle_terminal(socket, container, params.run, params.run_b64, params.cwd, params.cwd_b64))
+        ws.on_upgrade(move |socket| {
+            handle_terminal(
+                socket,
+                container,
+                params.run,
+                params.run_b64,
+                params.cwd,
+                params.cwd_b64,
+            )
+        })
     } else {
         (StatusCode::UNAUTHORIZED, "invalid token").into_response()
     }
@@ -279,7 +408,13 @@ async fn handle_terminal(
             match stdout.read(&mut out_buf).await {
                 Ok(n) if n > 0 => {
                     let chunk = String::from_utf8_lossy(&out_buf[..n]).to_string();
-                    if sender_stdout.lock().await.send(Message::Text(chunk)).await.is_err() {
+                    if sender_stdout
+                        .lock()
+                        .await
+                        .send(Message::Text(chunk))
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -295,7 +430,13 @@ async fn handle_terminal(
             match stderr.read(&mut err_buf).await {
                 Ok(n) if n > 0 => {
                     let chunk = String::from_utf8_lossy(&err_buf[..n]).to_string();
-                    if sender_stderr.lock().await.send(Message::Text(chunk)).await.is_err() {
+                    if sender_stderr
+                        .lock()
+                        .await
+                        .send(Message::Text(chunk))
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -342,7 +483,7 @@ async fn shutdown_handler(
 pub async fn serve() -> Result<()> {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
-    let serve_dir = ServeDir::new("web/dist");
+    let serve_dir = ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html"));
     let static_files = service_fn(move |req: Request<Body>| {
         let serve_dir = serve_dir.clone();
         async move {
@@ -360,6 +501,8 @@ pub async fn serve() -> Result<()> {
     });
     let app = Router::new()
         .route("/api/changed/:container", get(get_changed))
+        .route("/api/list", get(list_dir))
+        .route("/api/start", post(start_container_api))
         .route("/terminal/:container", get(terminal_ws))
         .route("/shutdown", get(shutdown_handler))
         .nest_service("/", static_files)

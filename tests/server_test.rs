@@ -5,10 +5,9 @@ use axum::{
     Router,
 };
 use tower::ServiceExt;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
-#[path = "../src/server.rs"]
-mod server;
+use codesandbox::server;
 
 #[tokio::test]
 async fn websocket_route_requires_upgrade() {
@@ -47,12 +46,32 @@ async fn websocket_route_without_token_requires_upgrade() {
 #[tokio::test]
 async fn serves_frontend_index() {
     let app = Router::new().fallback_service(
-        get_service(ServeDir::new("web/dist"))
+        get_service(ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")))
             .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
     );
 
     let res = app
         .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn serves_frontend_container_route() {
+    let app = Router::new().fallback_service(
+        get_service(ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")))
+            .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
+    );
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/container/test")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 

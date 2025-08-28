@@ -109,4 +109,51 @@ pub fn ensure_language_tools(container_name: &str, languages: &[ProjectLanguage]
     Ok(())
 }
 
+// For languages that require per-project dependencies, prepare them inside the container.
+// Currently supports Node.js: runs `npm ci` if lockfile exists, else `npm install`.
+// For Node.js projects, copy host node_modules into the container's isolated
+// volume path to keep installs off the host while avoiding a full reinstall.
+pub fn sync_node_modules_from_host(
+    container_name: &str,
+    project_dir: &Path,
+    languages: &[ProjectLanguage],
+) -> Result<()> {
+    if !languages.iter().any(|l| *l == ProjectLanguage::NodeJs) {
+        return Ok(());
+    }
+
+    let host_nm = project_dir.join("node_modules");
+    if !host_nm.is_dir() {
+        // Nothing to copy; host has no node_modules
+        return Ok(());
+    }
+
+    // Ensure target path exists in container and is owned by user, then copy
+    let container_nm = host_nm.display().to_string();
+    let mkdir_cmd = format!(
+        "sudo mkdir -p '{}' && sudo chown -R $(id -u):$(id -g) '{}'",
+        container_nm, container_nm
+    );
+    let mkdir_status = Command::new("docker")
+        .args(["exec", container_name, "bash", "-lc", &mkdir_cmd])
+        .status()
+        .context("Failed to ensure node_modules path inside container")?;
+    if !mkdir_status.success() {
+        anyhow::bail!("Failed to create node_modules path in container");
+    }
+
+    // Copy contents of host node_modules into container path
+    let src = format!("{}/.", host_nm.display());
+    let dest = format!("{}:{}", container_name, container_nm);
+    let cp_status = Command::new("docker")
+        .args(["cp", &src, &dest])
+        .status()
+        .context("Failed to copy node_modules to container")?;
+    if !cp_status.success() {
+        anyhow::bail!("Copying node_modules to container failed");
+    }
+
+    Ok(())
+}
+
  

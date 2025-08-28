@@ -257,3 +257,77 @@ async fn create_container_masks_only_existing_env_files() {
     assert!(!project_dir.join(".env.test.local").exists());
     assert!(!project_dir.join(".env.production.local").exists());
 }
+
+#[tokio::test]
+async fn create_container_isolates_node_modules_and_copies_from_host() {
+    let _lock = DOCKER_LOCK.lock().unwrap();
+    let tmp = tempdir().expect("temp dir");
+    let project_dir = tmp.path().join("proj-node");
+    fs::create_dir(&project_dir).expect("create project dir");
+    // Minimal Node project
+    fs::write(project_dir.join("package.json"), "{\n  \"name\": \"test\"\n}\n").unwrap();
+    // Create a host node_modules with a file to verify copy
+    let nm_dir = project_dir.join("node_modules");
+    fs::create_dir_all(nm_dir.join(".keep")).unwrap();
+
+    let bin_dir = tmp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let run_log = tmp.path().join("run_node.log");
+    let exec_log = tmp.path().join("exec_node.log");
+    let cp_log = tmp.path().join("cp_node.log");
+    let script = r#"#!/bin/bash
+set -e
+cmd="$1"; shift
+case "$cmd" in
+  build) exit 0 ;;
+  run) echo "$@" > "__RUN__"; exit 0 ;;
+  exec) echo "$@" >> "__EXEC__"; exit 0 ;;
+  cp) echo "$@" >> "__CP__"; exit 0 ;;
+  *) exit 0 ;;
+esac
+"#
+    .replace("__RUN__", run_log.to_str().unwrap())
+    .replace("__EXEC__", exec_log.to_str().unwrap())
+    .replace("__CP__", cp_log.to_str().unwrap());
+    let docker_path = bin_dir.join("docker");
+    fs::write(&docker_path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&docker_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&docker_path, perms).unwrap();
+    }
+
+    let original_path = env::var("PATH").unwrap_or_default();
+    env::set_var("PATH", format!("{}:{}", bin_dir.display(), original_path));
+
+    container::create_container(
+        "test-node",
+        &project_dir,
+        None,
+        &Agent::Claude,
+        None,
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+
+    env::set_var("PATH", original_path);
+
+    let run_args = fs::read_to_string(&run_log).unwrap();
+    let node_modules_path = project_dir.join("node_modules");
+    // Ensure the node_modules anonymous volume is present in run args
+    assert!(run_args.contains(&format!(" {} ", node_modules_path.display()))
+        || run_args.ends_with(&format!(" {}", node_modules_path.display()))
+        || run_args.starts_with(&format!("{} ", node_modules_path.display())));
+
+    // Ensure docker cp was invoked to copy node_modules
+    let cp_args = fs::read_to_string(&cp_log).unwrap();
+    let expected_dest = format!(
+        "test-node:{}",
+        project_dir.join("node_modules").display()
+    );
+    assert!(cp_args.contains(&expected_dest));
+}

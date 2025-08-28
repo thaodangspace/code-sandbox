@@ -6,7 +6,9 @@ use tempfile::NamedTempFile;
 
 use crate::cli::Agent;
 use crate::config::{get_claude_config_dir, get_claude_json_paths};
-use crate::language::{detect_project_languages, ensure_language_tools, ProjectLanguage};
+use crate::language::{
+    detect_project_languages, ensure_language_tools, sync_node_modules_from_host, ProjectLanguage,
+};
 use crate::settings::load_settings;
 
 use super::manage::{container_exists, is_container_running};
@@ -116,6 +118,20 @@ fn build_run_command(
         "-v",
         &format!("{}:{}", current_dir.display(), current_dir.display()),
     ]);
+
+    // For Node.js projects, avoid mounting host node_modules by overlaying
+    // an anonymous volume at the container's node_modules path. This prevents
+    // install scripts from affecting the host machine.
+    let project_has_node = current_dir.join("package.json").exists()
+        || current_dir.join("node_modules").exists();
+    if project_has_node {
+        let node_modules_path = current_dir.join("node_modules");
+        docker_run.args(["-v", &format!("{}", node_modules_path.display())]);
+        println!(
+            "Isolating node_modules with container volume: {}",
+            node_modules_path.display()
+        );
+    }
 
     let settings = load_settings().unwrap_or_default();
     let mut env_file_overlays: Vec<NamedTempFile> = Vec::new();
@@ -250,6 +266,8 @@ pub async fn create_container(
         );
     }
     ensure_language_tools(container_name, &languages)?;
+    // For Node.js projects, copy host node_modules into the isolated volume in container
+    sync_node_modules_from_host(container_name, current_dir, &languages)?;
     if attach {
         attach_to_container(
             container_name,
@@ -484,4 +502,3 @@ CMD ["/bin/bash"]
         user = user
     )
 }
-

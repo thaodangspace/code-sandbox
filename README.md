@@ -44,6 +44,7 @@ Running an agent inside an isolated container provides several benefits:
 
 -   **Multi-Agent Support**: Compatible with Claude, Gemini, Codex, and Qwen development agents
 -   **Automatic Workspace Mounting**: Seamlessly mounts your current directory to same path with the host machine in the container
+-   **Node Modules Isolation**: For Node.js projects, `node_modules` is overlaid with a container-only volume and dependencies are installed inside the container to avoid affecting the host
 -   **Configuration Management**: Automatically copies and applies your agent configurations
 -   **Intelligent Naming**: Generates contextual container names to prevent conflicts (`csb-{agent}-{dir}-{branch}-{yymmddhhmm}`)
 -   **Language Tooling**: Detects common project languages and installs missing package managers like Cargo, npm, pip, Composer, Go, or Bundler

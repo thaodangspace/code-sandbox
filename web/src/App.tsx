@@ -9,15 +9,15 @@ function ContainerView() {
   const { containerName } = useParams<{ containerName: string }>();
   
   return (
-    <Tabs defaultValue="terminal" className="h-full flex flex-col">
+    <Tabs defaultValue="terminal" className="h-full min-h-0 flex flex-col">
       <TabsList className="fixed bottom-0 w-full">
         <TabsTrigger value="terminal">Terminal</TabsTrigger>
         <TabsTrigger value="diff">Diff</TabsTrigger>
       </TabsList>
-      <TabsContent value="terminal" className="flex-1 mb-12">
+      <TabsContent value="terminal" className="flex-1 min-h-0 mb-12">
         <Terminal containerName={containerName} />
       </TabsContent>
-      <TabsContent value="diff" className="flex-1 overflow-auto mb-12">
+      <TabsContent value="diff" className="flex-1 min-h-0 overflow-auto mb-12">
         <DiffView containerName={containerName} />
       </TabsContent>
     </Tabs>

@@ -111,14 +111,16 @@ export default function Terminal({ containerName }: TerminalProps) {
             ws.onopen = () => {
                 setIsConnecting(false);
                 term.write('Connected to container...\r\n');
-                // No-op: autorun is now injected by the server via WS query params
-                // Send current size once connected
+                // Send initial size to backend (tmux) after connection opens
                 try {
-                    fitAddon.fit();
                     const cols = term.cols;
                     const rows = term.rows;
-                    ws.send(`__RESIZE__:${cols},${rows}`);
-                } catch {}
+                    if (Number.isFinite(cols) && Number.isFinite(rows)) {
+                        ws.send(`__RESIZE__:${cols},${rows}`);
+                    }
+                } catch (err) {
+                    console.warn('Failed to send initial resize:', err);
+                }
             };
 
             ws.onmessage = (e) => {
@@ -146,15 +148,22 @@ export default function Terminal({ containerName }: TerminalProps) {
                 }
             });
 
-            // Handle resize
+            // Propagate terminal resize to backend (tmux)
+            const sendResize = (cols: number, rows: number) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(`__RESIZE__:${cols},${rows}`);
+                }
+            };
+
+            // Handle window resize: fit xterm then notify backend
             const handleResize = () => {
                 try {
                     fitAddon.fit();
-                    const ws = wsRef.current;
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        const cols = term.cols;
-                        const rows = term.rows;
-                        ws.send(`__RESIZE__:${cols},${rows}`);
+                    // After fitting, xterm updates cols/rows; send them
+                    const cols = term.cols;
+                    const rows = term.rows;
+                    if (Number.isFinite(cols) && Number.isFinite(rows)) {
+                        sendResize(cols, rows);
                     }
                 } catch (err) {
                     console.warn('Failed to fit terminal on resize:', err);
@@ -163,21 +172,19 @@ export default function Terminal({ containerName }: TerminalProps) {
 
             window.addEventListener('resize', handleResize);
 
-            // Also observe container size changes (e.g., tab switches)
-            let ro: ResizeObserver | null = null;
-            if (ref.current) {
-                ro = new ResizeObserver(() => handleResize());
-                ro.observe(ref.current);
-            }
+            // Also listen to xterm's own resize events (e.g. when fonts load)
+            const disposeOnResize = term.onResize(({ cols, rows }) => {
+                if (Number.isFinite(cols) && Number.isFinite(rows)) {
+                    sendResize(cols, rows);
+                }
+            });
 
             return () => {
                 window.removeEventListener('resize', handleResize);
-                if (ro) {
-                    ro.disconnect();
-                }
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.close();
                 }
+                disposeOnResize.dispose();
                 term.dispose();
             };
         } catch (err) {

@@ -122,8 +122,8 @@ fn build_run_command(
     // For Node.js projects, avoid mounting host node_modules by overlaying
     // an anonymous volume at the container's node_modules path. This prevents
     // install scripts from affecting the host machine.
-    let project_has_node = current_dir.join("package.json").exists()
-        || current_dir.join("node_modules").exists();
+    let project_has_node =
+        current_dir.join("package.json").exists() || current_dir.join("node_modules").exists();
     if project_has_node {
         let node_modules_path = current_dir.join("node_modules");
         docker_run.args(["-v", &format!("{}", node_modules_path.display())]);
@@ -391,8 +391,12 @@ async fn attach_to_container(
         let path_str = current_dir.display().to_string();
         let escaped = path_str.replace('\'', "'\\''");
         let command = format!("cd '{}' && source ~/.bashrc && exec /bin/bash", escaped);
-        let mut args = vec!["exec"]; 
-        if allocate_tty { args.push("-it"); } else { args.push("-i"); }
+        let mut args = vec!["exec"];
+        if allocate_tty {
+            args.push("-it");
+        } else {
+            args.push("-i");
+        }
         args.push(container_name);
         args.extend(["/bin/bash", "-c", &command]);
         let attach_status = Command::new("docker")
@@ -410,8 +414,12 @@ async fn attach_to_container(
 
     let command = build_agent_command(current_dir, agent, agent_continue, skip_permission_flag);
 
-    let mut args = vec!["exec"]; 
-    if allocate_tty { args.push("-it"); } else { args.push("-i"); }
+    let mut args = vec!["exec"];
+    if allocate_tty {
+        args.push("-it");
+    } else {
+        args.push("-i");
+    }
     args.push(container_name);
     args.extend(["/bin/bash", "-c", &command]);
     let attach_status = Command::new("docker")
@@ -449,6 +457,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     lsb-release \
+    tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js v22

@@ -1,13 +1,11 @@
-mod naming;
 mod manage;
+mod naming;
 mod runtime;
 
-pub use naming::generate_container_name;
 pub use manage::{
-    cleanup_containers,
+    auto_remove_old_containers, check_docker_availability, cleanup_containers, list_all_containers,
     list_containers,
-    list_all_containers,
-    auto_remove_old_containers,
-    check_docker_availability,
 };
+pub use naming::generate_container_name;
+#[allow(unused_imports)]
 pub use runtime::{build_agent_command, create_container, resume_container};
